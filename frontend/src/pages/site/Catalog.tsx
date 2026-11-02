@@ -31,9 +31,11 @@ export default function CatalogPage() {
   if (q) qs.set('search', q);
   if (level) qs.set('level', level);
   if (category) qs.set('category__slug', category);
-  const swr = useSWR<Paged<Course>>(key, {
-  keepPreviousData: true,
-});
+  const swr = useSWR<Paged<Course>>(
+  `courses/?${qs.toString()}`,
+  { keepPreviousData: true },
+);
+
   const { data: cats } = useSWR<Listish<Category>>('categories/');
 
   return (
