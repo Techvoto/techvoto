@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Lock client</title></head><body>
+<script>
+  const id = new URLSearchParams(location.search).get('id');
+  window.parent.postMessage({ type: 'ready', id }, location.origin);
+  window.addEventListener('message', async (event) => {
+    if (event.origin !== location.origin || event.data?.type !== 'run') return;
+    try {
+      await navigator.locks.request(event.data.lockName, async () => {
+        window.parent.postMessage({ type: 'entered', id }, location.origin);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        window.parent.postMessage({ type: 'left', id }, location.origin);
+      });
+    } catch (error) {
+      window.parent.postMessage({ type: 'error', id, message: String(error) }, location.origin);
+    }
+  });
+</script></body></html>

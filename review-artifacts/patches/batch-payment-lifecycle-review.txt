@@ -1,0 +1,283 @@
+diff --git a/docs/PAYMENT_BATCH.md b/docs/PAYMENT_BATCH.md
+new file mode 100644
+index 0000000..289aed5
+--- /dev/null
++++ b/docs/PAYMENT_BATCH.md
+@@ -0,0 +1,21 @@
++# Payment lifecycle batch — isolated review patch
++
++## Scope
++
++This patch changes only the browser's payment-return verification experience. It does not modify authentication, API transport, backend payment handling, Paystack configuration, billing/refund operations, or production deployment configuration.
++
++## Changes
++
++- `CheckoutVerify` previously converted exhaustion of ten polling attempts into a terminal `failed` UI state, even when the backend had returned `pending` or requests had failed transiently. The backend's verification endpoint can return HTTP 202 with `status: pending` while Paystack/webhook confirmation is unresolved.   The new behavior treats only explicit backend `success` as success and explicit `failed` as failure; pending, unknown, and transient request errors remain inconclusive. After the ten-attempt polling window, it shows a recoverable pending state with manual recheck and a billing link, and warns the learner not to pay again while a prior transaction is being confirmed.
++- Expanded frontend payment/refund types and status presentation to match the supplied backend choices: payment `refund_pending` / `refund_failed`, and refund request `processing` / `failed`. Billing, admin payments, and admin refund filters now display these states instead of indexing missing color-map entries or omitting them from filters.
++
++## Tests
++
++- `node --test tests/*.test.mjs` — 4 passed, 0 failed, exit 0.
++- Source syntax transpilation and real-browser/API contract tests remain outstanding; the test suite covers the payment verification decision helper only.
++- `npm test` script added to run this focused suite.
++- Typecheck/build/browser-backend verification are not claimed; dependency installation is blocked in this workspace.
++
++## Review boundary
++
++This patch is intentionally separate from the Batch 1 authentication patch. Merge/review independently. Real Paystack sandbox, webhook delivery, duplicate checkout, refund initiation/settlement, and browser integration remain outside this frontend-only patch.
+diff --git a/package.json b/package.json
+index be0793e..208242a 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,8 @@
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+     "preview": "vite preview",
+-    "typecheck": "tsc --noEmit"
++    "typecheck": "tsc --noEmit",
++    "test": "node --test tests/*.test.mjs"
+   },
+   "dependencies": {
+     "@fontsource-variable/inter": "^5.1.0",
+diff --git a/src/lib/payment-verification.d.mts b/src/lib/payment-verification.d.mts
+new file mode 100644
+index 0000000..6461415
+--- /dev/null
++++ b/src/lib/payment-verification.d.mts
+@@ -0,0 +1,5 @@
++export function classifyPaymentVerification(
++  status: string | null | undefined,
++  attempts: number,
++  maxAttempts?: number,
++): 'success' | 'failed' | 'pending' | 'retry';
+diff --git a/src/lib/payment-verification.mjs b/src/lib/payment-verification.mjs
+new file mode 100644
+index 0000000..e69f8d8
+--- /dev/null
++++ b/src/lib/payment-verification.mjs
+@@ -0,0 +1,6 @@
++/** Only an explicit backend failure is terminal; pending/unknown remains recoverable. */
++export function classifyPaymentVerification(status, attempts, maxAttempts = 10) {
++  if (status === 'success') return 'success';
++  if (status === 'failed') return 'failed';
++  return attempts >= maxAttempts ? 'pending' : 'retry';
++}
+diff --git a/src/pages/admin/AdminPayments.tsx b/src/pages/admin/AdminPayments.tsx
+index 2e64072..a227e0e 100644
+--- a/src/pages/admin/AdminPayments.tsx
++++ b/src/pages/admin/AdminPayments.tsx
+@@ -11,8 +11,8 @@ import { toast } from '@/lib/toast';
+ import { useTitle } from '@/lib/useTitle';
+ import type { Paged, Payment, PaymentStatus } from '@/types';
+ 
+-const COLOR: Record<PaymentStatus, 'success' | 'warning' | 'danger' | 'default'> = { success: 'success', pending: 'warning', failed: 'danger', refunded: 'default' };
+-const STATUSES: PaymentStatus[] = ['success', 'pending', 'failed', 'refunded'];
++const COLOR: Record<PaymentStatus, 'success' | 'warning' | 'danger' | 'default'> = { success: 'success', pending: 'warning', failed: 'danger', refund_pending: 'warning', refunded: 'default', refund_failed: 'danger' };
++const STATUSES: PaymentStatus[] = ['success', 'pending', 'failed', 'refund_pending', 'refunded', 'refund_failed'];
+ 
+ export default function AdminPayments() {
+   useTitle('Payments');
+@@ -28,7 +28,7 @@ export default function AdminPayments() {
+     <>
+       <PageHeader title="Payments" subtitle="All Paystack transactions." />
+       <Select aria-label="Status filter" placeholder="All statuses" className="mb-4 max-w-xs" selectedKeys={status ? [status] : []} onSelectionChange={(k) => { setStatus(firstKey(k)); setPage(1); }}>
+-        {STATUSES.map((s) => <SelectItem key={s} className="capitalize">{s}</SelectItem>)}
++        {STATUSES.map((s) => <SelectItem key={s} className="capitalize">{s.replace(/_/g, ' ')}</SelectItem>)}
+       </Select>
+       <DataState swr={swr} skeleton={<TableSkeleton />} isEmpty={(d) => list(d).length === 0} empty={<EmptyState title="No payments yet" />}>
+         {(d) => (
+@@ -40,7 +40,7 @@ export default function AdminPayments() {
+                   <TableRow key={p.id}>
+                     <TableCell className="font-mono text-xs">{p.reference}</TableCell><TableCell>{p.user_email}</TableCell><TableCell>{p.course_title}</TableCell>
+                     <TableCell>{naira(p.amount_kobo)}</TableCell>
+-                    <TableCell><Chip size="sm" variant="flat" color={COLOR[p.status]} className="capitalize">{p.status}</Chip></TableCell>
++                    <TableCell><Chip size="sm" variant="flat" color={COLOR[p.status]} className="capitalize">{p.status.replace(/_/g, ' ')}</Chip></TableCell>
+                     <TableCell>{dateTime(p.refunded_at || p.paid_at || p.created_at)}</TableCell>
+                     <TableCell>{p.status === 'success' && <Button size="sm" variant="flat" color="danger" onPress={() => { void refund(p); }}>Refund</Button>}</TableCell>
+                   </TableRow>
+diff --git a/src/pages/admin/AdminRefunds.tsx b/src/pages/admin/AdminRefunds.tsx
+index 91db16c..eff086d 100644
+--- a/src/pages/admin/AdminRefunds.tsx
++++ b/src/pages/admin/AdminRefunds.tsx
+@@ -11,7 +11,7 @@ import { toast } from '@/lib/toast';
+ import { useTitle } from '@/lib/useTitle';
+ import type { Listish, RefundRequest } from '@/types';
+ 
+-const COLOR: Record<RefundRequest['status'], 'warning' | 'success' | 'danger'> = { pending: 'warning', approved: 'success', rejected: 'danger' };
++const COLOR: Record<RefundRequest['status'], 'warning' | 'success' | 'danger'> = { pending: 'warning', processing: 'warning', approved: 'success', rejected: 'danger', failed: 'danger' };
+ 
+ export default function AdminRefunds() {
+   useTitle('Refund requests');
+@@ -32,7 +32,7 @@ export default function AdminRefunds() {
+     <>
+       <PageHeader title="Refund requests" />
+       <Select aria-label="Status" className="mb-4 max-w-xs" selectedKeys={[status]} disallowEmptySelection onSelectionChange={(k) => setStatus(firstKey(k))}>
+-        {['pending', 'approved', 'rejected'].map((s) => <SelectItem key={s} className="capitalize">{s}</SelectItem>)}
++        {['pending', 'processing', 'approved', 'rejected', 'failed'].map((s) => <SelectItem key={s} className="capitalize">{s}</SelectItem>)}
+       </Select>
+       <DataState swr={swr} skeleton={<TableSkeleton />} isEmpty={(d) => list(d).length === 0} empty={<EmptyState title={`No ${status} requests`} />}>
+         {(d) => (
+diff --git a/src/pages/app/Billing.tsx b/src/pages/app/Billing.tsx
+index a769d54..4735bda 100644
+--- a/src/pages/app/Billing.tsx
++++ b/src/pages/app/Billing.tsx
+@@ -11,7 +11,7 @@ import { toast } from '@/lib/toast';
+ import { useTitle } from '@/lib/useTitle';
+ import type { Listish, Payment, PaymentStatus } from '@/types';
+ 
+-const COLOR: Record<PaymentStatus, 'success' | 'warning' | 'danger' | 'default'> = { success: 'success', pending: 'warning', failed: 'danger', refunded: 'default' };
++const COLOR: Record<PaymentStatus, 'success' | 'warning' | 'danger' | 'default'> = { success: 'success', pending: 'warning', failed: 'danger', refund_pending: 'warning', refunded: 'default', refund_failed: 'danger' };
+ 
+ export default function Billing() {
+   useTitle('Billing');
+@@ -42,9 +42,12 @@ export default function Billing() {
+                 <TableRow key={p.id}>
+                   <TableCell><p className="font-medium">{p.course_title}</p><p className="font-mono text-xs text-default-400">{p.reference}</p></TableCell>
+                   <TableCell>{naira(p.amount_kobo)}</TableCell>
+-                  <TableCell><Chip size="sm" variant="flat" color={COLOR[p.status]} className="capitalize">{p.status}</Chip>
++                  <TableCell><Chip size="sm" variant="flat" color={COLOR[p.status]} className="capitalize">{p.status.replace(/_/g, ' ')}</Chip>
+                     {p.refund_request_status === 'pending' && <p className="mt-1 text-xs text-default-500">Refund requested</p>}
+-                    {p.refund_request_status === 'rejected' && <p className="mt-1 text-xs text-danger">Refund declined</p>}</TableCell>
++                    {p.refund_request_status === 'processing' && <p className="mt-1 text-xs text-warning">Refund being processed</p>}
++                    {p.refund_request_status === 'approved' && <p className="mt-1 text-xs text-default-500">Refund submitted to provider</p>}
++                    {p.refund_request_status === 'rejected' && <p className="mt-1 text-xs text-danger">Refund declined</p>}
++                    {p.refund_request_status === 'failed' && <p className="mt-1 text-xs text-danger">Refund could not be processed</p>}</TableCell>
+                   <TableCell>{dateTime(p.refunded_at || p.paid_at || p.created_at)}</TableCell>
+                   <TableCell>{p.can_request_refund && <Button size="sm" variant="flat" onPress={() => { setTarget(p); modal.onOpen(); }}>Request refund</Button>}</TableCell>
+                 </TableRow>
+diff --git a/src/pages/app/CheckoutVerify.tsx b/src/pages/app/CheckoutVerify.tsx
+index 936ead8..00afc2f 100644
+--- a/src/pages/app/CheckoutVerify.tsx
++++ b/src/pages/app/CheckoutVerify.tsx
+@@ -1,45 +1,65 @@
+ import { Button, Card, CardBody, Spinner } from '@heroui/react';
+-import { CheckCircle2, XCircle } from 'lucide-react';
++import { CheckCircle2, Clock3, XCircle } from 'lucide-react';
+ import { useEffect, useState } from 'react';
+ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+ import { api } from '@/lib/api';
++import { classifyPaymentVerification } from '@/lib/payment-verification.mjs';
+ import { toast } from '@/lib/toast';
+ import { useTitle } from '@/lib/useTitle';
+ 
++type VerificationState = 'checking' | 'success' | 'failed' | 'pending';
++
+ export default function CheckoutVerify() {
+   useTitle('Confirming payment');
+   const [params] = useSearchParams();
+   const reference = params.get('reference');
+   const navigate = useNavigate();
+-  const [state, setState] = useState<'checking' | 'success' | 'failed'>('checking');
++  const [state, setState] = useState<VerificationState>('checking');
+   const [slug, setSlug] = useState('');
++  const [retryKey, setRetryKey] = useState(0);
+ 
+   useEffect(() => {
+     if (!reference) { setState('failed'); return; }
+     let tries = 0, stop = false;
+     let timer: ReturnType<typeof setTimeout> | undefined;
++    setState('checking');
++
+     async function poll() {
++      let status: string | null = null;
++      let courseSlug = '';
+       try {
+-        const d = await api<{ status: string; course_slug: string }>(`payments/verify/${encodeURIComponent(reference as string)}/`);
+-        if (stop) return;
+-        if (d.status === 'success') {
+-          setSlug(d.course_slug); setState('success'); toast.success('Payment received. You are enrolled!');
+-          timer = setTimeout(() => navigate(`/learn/${d.course_slug}`), 1500); return;
+-        }
+-        if (d.status === 'failed') { setState('failed'); return; }
+-      } catch { /* keep polling; the webhook may still be on its way */ }
++        const result = await api<{ status: string; course_slug?: string }>(
++          `payments/verify/${encodeURIComponent(reference)}/`,
++        );
++        status = result.status;
++        courseSlug = result.course_slug ?? '';
++      } catch {
++        // Network and gateway errors are inconclusive; keep the payment recoverable.
++      }
+       if (stop) return;
+-      if (++tries < 10) timer = setTimeout(poll, 2000); else setState('failed');
++      tries += 1;
++      const decision = classifyPaymentVerification(status, tries, 10);
++      if (decision === 'success') {
++        setSlug(courseSlug); setState('success');
++        toast.success('Payment received. You are enrolled!');
++        timer = setTimeout(() => navigate(`/learn/${courseSlug}`), 1500);
++        return;
++      }
++      if (decision === 'failed') { setState('failed'); return; }
++      if (decision === 'pending') { setState('pending'); return; }
++      timer = setTimeout(poll, 2000);
+     }
++
+     void poll();
+     return () => { stop = true; if (timer) clearTimeout(timer); };
+-  }, [reference, navigate]);
++  }, [reference, navigate, retryKey]);
+ 
+   return (
+     <div className="mx-auto max-w-md pt-10"><Card shadow="md"><CardBody className="items-center space-y-4 p-10 text-center">
+       {state === 'checking' && <><Spinner size="lg" /><h1 className="text-xl font-semibold">Confirming your payment...</h1><p className="text-sm text-default-500">This only takes a moment. Please do not close this page.</p></>}
+       {state === 'success' && <><CheckCircle2 size={48} className="text-success" /><h1 className="text-xl font-semibold">Payment successful</h1><Button as={Link} to={`/learn/${slug}`} color="primary">Start learning</Button></>}
+-      {state === 'failed' && <><XCircle size={48} className="text-danger" /><h1 className="text-xl font-semibold">We could not confirm the payment</h1><p className="text-sm text-default-500">If you were charged, your access will appear automatically within a few minutes.</p><Button as={Link} to="/courses" variant="flat">Back to courses</Button></>}
++      {state === 'pending' && <><Clock3 size={48} className="text-warning" /><h1 className="text-xl font-semibold">Payment is still being confirmed</h1><p className="text-sm text-default-500">We have not received a final result yet. If you were charged, do not pay again. You can safely check this reference again.</p><Button color="primary" onPress={() => setRetryKey((key) => key + 1)}>Check again</Button><Button as={Link} to="/billing" variant="flat">View billing</Button></>}
++      {state === 'failed' && <><XCircle size={48} className="text-danger" /><h1 className="text-xl font-semibold">Payment was not successful</h1><p className="text-sm text-default-500">The payment provider reported a failed transaction. If your account was debited, contact support with your payment reference.</p><Button as={Link} to="/courses" variant="flat">Back to courses</Button></>}
+     </CardBody></Card></div>
+   );
+ }
+diff --git a/src/types.ts b/src/types.ts
+index 2f29de6..fec4edf 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -80,15 +80,16 @@ export interface SearchResults {
+   lessons: { id: number; title: string; course_title: string; course_slug: string }[];
+ }
+ 
+-export type PaymentStatus = 'success' | 'pending' | 'failed' | 'refunded';
++export type PaymentStatus = 'success' | 'pending' | 'failed' | 'refund_pending' | 'refunded' | 'refund_failed';
+ export interface Payment {
+   id: number; reference: string; course_title: string; user_email?: string; amount_kobo: number; status: PaymentStatus;
+   paid_at?: string | null; refunded_at?: string | null; created_at: string; can_request_refund?: boolean;
+-  refund_request_status?: 'pending' | 'approved' | 'rejected' | null;
++  refund_status?: string;
++  refund_request_status?: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed' | null;
+ }
+ export interface RefundRequest {
+   id: number; student: string; email: string; course_title: string; amount_kobo: number; reason: string;
+-  progress_pct?: number | null; status: 'pending' | 'approved' | 'rejected'; created_at: string;
++  progress_pct?: number | null; status: 'pending' | 'processing' | 'approved' | 'rejected' | 'failed'; created_at: string;
+ }
+ export interface ContactMessage { id: number; name: string; email: string; subject: string; message: string; is_handled: boolean; created_at: string }
+ 
+diff --git a/tests/payment-verification.test.mjs b/tests/payment-verification.test.mjs
+new file mode 100644
+index 0000000..afb811c
+--- /dev/null
++++ b/tests/payment-verification.test.mjs
+@@ -0,0 +1,23 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { classifyPaymentVerification } from '../src/lib/payment-verification.mjs';
++
++test('only explicit provider success is terminal success', () => {
++  assert.equal(classifyPaymentVerification('success', 1), 'success');
++});
++
++test('only explicit provider failure is terminal failure', () => {
++  assert.equal(classifyPaymentVerification('failed', 1), 'failed');
++});
++
++test('pending and unknown provider states keep polling before the retry limit', () => {
++  for (const status of ['pending', 'refund_pending', 'unknown', null, undefined]) {
++    assert.equal(classifyPaymentVerification(status, 9, 10), 'retry');
++  }
++});
++
++test('retry exhaustion becomes recoverable pending, never a false payment failure', () => {
++  for (const status of ['pending', 'unknown', null, undefined]) {
++    assert.equal(classifyPaymentVerification(status, 10, 10), 'pending');
++  }
++});

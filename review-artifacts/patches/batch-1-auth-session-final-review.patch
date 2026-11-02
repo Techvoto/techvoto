@@ -1,0 +1,1286 @@
+diff --git a/.env.example b/.env.example
+index abe6e09..a700efe 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,6 +1,7 @@
+ # Dev only: where the Vite dev server proxies /api to.
+ VITE_PROXY_TARGET=http://localhost:8000
+ 
+-# Production: leave empty if your host rewrites /api/* to the Django API (same origin, no CORS needed).
+-# Otherwise set the API origin, e.g. https://api.techvoto.com, and add this site to CORS_ALLOWED_ORIGINS on Django.
++# Production: leave empty when the host reverse-proxies /api/* to Django (recommended).
++# Otherwise set the API origin and configure credentialed CORS, trusted CSRF origin, and compatible cookies.
++# Cross-site cookies require AUTH_COOKIE_SAMESITE=None and AUTH_COOKIE_SECURE=True on Django.
+ VITE_API_URL=
+diff --git a/.github/workflows/frontend-quality.yml b/.github/workflows/frontend-quality.yml
+new file mode 100644
+index 0000000..791db1c
+--- /dev/null
++++ b/.github/workflows/frontend-quality.yml
+@@ -0,0 +1,24 @@
++name: Frontend quality
++
++on:
++  pull_request:
++  push:
++    branches: [main, master]
++
++permissions:
++  contents: read
++
++jobs:
++  quality:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 22
++          cache: npm
++      - run: npm ci
++      - run: npm test
++      - run: npm run lint
++      - run: npm run typecheck
++      - run: npm run build
+diff --git a/README.md b/README.md
+index 0a98f14..279ccfa 100644
+--- a/README.md
++++ b/README.md
+@@ -9,6 +9,7 @@ cp .env.example .env
+ npm install
+ npm run dev          # http://localhost:3000, proxies /api to http://localhost:8000
+ npm run typecheck    # tsc --noEmit
++npm test            # dependency-free auth/session regression tests
+ npm run build        # typecheck + production build into dist/
+ ```
+ 
+@@ -19,7 +20,7 @@ The Django backend already allows `http://localhost:3000`, so nothing changes th
+ | Next.js | Now |
+ |---|---|
+ | `app/api/auth/*` and `app/api/proxy/*` route handlers | Removed. The browser talks to Django directly (`src/lib/api.ts`). |
+-| httpOnly cookies set by Next | Access token in memory, refresh token in `localStorage` (`src/lib/tokens.ts`). |
++| httpOnly cookies set by Next | Django sets HttpOnly access and refresh cookies; the frontend sends credentials and an in-memory CSRF token (`src/lib/csrf.ts`). |
+ | `middleware.js` route protection | `AppLayout` / `RoleGate` in `src/layouts/layouts.tsx` (redirects to `/login?next=...`). |
+ | File-based routing | `src/router.tsx` (React Router, every page lazy-loaded as its own chunk). |
+ | `metadata` / `sitemap.js` / `robots.js` | `useTitle()` hook, `index.html`, `public/robots.txt`. |
+@@ -29,8 +30,24 @@ The Django backend already allows `http://localhost:3000`, so nothing changes th
+ ## Deploying
+ 
+ - Same origin (recommended): serve `dist/` and rewrite `/api/*` to the Django API. `vercel.json` already has the SPA fallback; add an `/api` rewrite to your API host, or the equivalent in nginx. Leave `VITE_API_URL` empty.
+-- Different origin: set `VITE_API_URL=https://api.example.com`, add the site to `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` in Django, and expose `Content-Disposition` (`CORS_EXPOSE_HEADERS`) so downloads keep their filenames.
++- Different origin: set `VITE_API_URL` to the actual API origin (the `api.example.com` value shown in older deployment examples is only a placeholder), add the site to `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` in Django, and expose `Content-Disposition` (`CORS_EXPOSE_HEADERS`) so downloads keep their filenames.
+ 
+-## Auth tradeoff
++## Authentication and API connectivity
+ 
+-Django's JWT endpoints return tokens in the JSON body, so the refresh token now lives in `localStorage`, readable by any script on the page (the old setup kept it in an httpOnly cookie). User content is rendered through `react-markdown`, which does not render raw HTML, and there is no `dangerouslySetInnerHTML` in the app. To get httpOnly back later, make the Django login/refresh/logout views set the refresh token as a cookie and drop `tokens.ts` persistence.
++The frontend uses the backend's cookie-based JWT contract:
++
++- `GET /api/auth/csrf/` obtains a CSRF token and sets Django's CSRF cookie.
++- `POST /api/auth/login/` and `POST /api/auth/register/` return `{ user }`; the backend sets the HttpOnly `techvoto_access` and `techvoto_refresh` cookies.
++- Authenticated requests include cookies. Unsafe methods include `X-CSRFToken`.
++- `POST /api/auth/token/refresh/` rotates cookies; tokens are not read from or written to JavaScript storage.
++- `POST /api/auth/logout/` blacklists the refresh cookie and clears the auth cookies.
++- After successful login or registration, the client clears and reacquires the in-memory CSRF token before the next unsafe request.
++- A temporary failure from `auth/me/` (network, 429, or 5xx) leaves session status unknown and shows a retry action; only a confirmed 401 is treated as signed out.
++
++Refresh calls are shared within a tab and use the Web Locks API across tabs. After acquiring the lock, the client probes `auth/me/` so a late 401 can reuse cookies already rotated by another tab. If Web Locks are unavailable, the client fails closed rather than risking a rotating-refresh race; users can sign in again, but automatic refresh is not supported in those browsers until a backend-side coordination protocol is verified.
++
++For production, prefer a same-origin `/api/*` reverse proxy. If `VITE_API_URL` points to a different origin, configure Django `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, and `CORS_ALLOW_CREDENTIALS=True`; the frontend origin and API must also have a cookie-compatible site/domain arrangement. For genuinely cross-site deployments, configure `AUTH_COOKIE_SAMESITE=None`, `AUTH_COOKIE_SECURE=True`, and the appropriate cookie domain only after validating the deployment topology. Do not expose refresh tokens to JavaScript.
++
++`vercel.json` currently contains the SPA fallback but no API destination. A production deployment using same-origin API paths must add a `/api/*` rewrite to the actual backend origin before the SPA fallback. The backend origin is intentionally not guessed in this source archive. Alternatively, set `VITE_API_URL` at build time and configure credentialed CORS and CSRF on Django.
++
++User content is rendered through `react-markdown`; the app has no `dangerouslySetInnerHTML` usage.
+diff --git a/docs/CHANGELOG.md b/docs/CHANGELOG.md
+new file mode 100644
+index 0000000..67311e7
+--- /dev/null
++++ b/docs/CHANGELOG.md
+@@ -0,0 +1,36 @@
++# Frontend remediation changelog
++
++## 2026-11-02 — Batch 1: authentication and API session handling
++
++- Replaced localStorage refresh-token handling with the backend's HttpOnly cookie session contract.
++- Added CSRF token acquisition from `GET /api/auth/csrf/` and `X-CSRFToken` on unsafe requests.
++- Included browser credentials on API requests.
++- Initially implemented cookie-based refresh and Web Locks cross-tab serialization. The later final review follow-up below supersedes the initial no-Web-Locks backend-fallback behavior with a fail-closed restriction.
++- Updated login, registration, logout, and session restoration for `{ user }` responses and cookie-owned tokens.
++- Cleared SWR cache on login/registration to prevent cross-account cache reuse.
++- Updated authentication and deployment documentation.
++
++No production deployment was performed. No backend source was modified.
++
++## 2026-11-02 — Batch 1 review follow-up: CSRF, session recovery and regression tests
++
++- After successful login and registration, clear the in-memory masked CSRF token and reacquire it before marking the new session active. If acquisition is temporarily unavailable, leave the cache empty so the next unsafe request retries.
++- Verified the supplied backend `LoginView` and `RegisterView`: neither calls Django `rotate_token()` or `django.contrib.auth.login()`. The frontend reacquisition is retained as a safe compatibility measure if the backend later rotates CSRF state.
++- Added explicit `loading`, `authenticated`, `unauthenticated`, and `unknown` session states. Only a confirmed 401 maps to signed-out; network, 429 and 5xx errors remain unknown and have retry UI.
++- Refresh coordination now probes `auth/me/` after obtaining the Web Lock. If another tab already refreshed the shared HttpOnly cookies, the late-401 tab retries its original request without rotating again.
++- Added dependency-free Node regression tests and an `npm test` script. 12 tests pass.
++- Documented the backend fallback limitation for simultaneous refreshes when Web Locks are unavailable and the access cookie is expired.
++- `npm ci` remains blocked by DNS/network errors reaching `registry.npmjs.org`; typecheck and build remain blocked by missing `vite/client` in the incomplete dependency tree.
++
++No payment code was changed. No backend code was changed. No production deployment was performed.
++
++
++## 2026-11-02 — Batch 1 final review follow-up
++
++- Extracted the production API transport into `src/lib/api-client.mjs`; `src/lib/api.ts` now binds it to browser `fetch`, the in-memory CSRF cache and Web Locks.
++- Added API-client integration tests for CSRF bootstrap/header, credentials, login CSRF reacquisition, refresh probe/rotation/retry, refresh 401, transient 503, multipart, late 401, concurrent calls and the no-Web-Locks restriction.
++- Changed the no-Web-Locks path to fail closed. The backend's concurrent-refresh fallback is not sufficient for expired access cookies. Browsers without Web Locks are not approved for automatic refresh until a safe backend coordination protocol exists.
++- Added a TypeScript AST source-guard lint command and a GitHub Actions workflow for `npm ci`, tests, lint, typecheck and production build. This guard is deliberately narrow and is not a substitute for ESLint.
++- Test suite currently passes 21 tests. Dependency installation, semantic typecheck and production build remain blocked by unavailable npm registry access and incomplete `node_modules`.
++
++No backend code or production deployment was performed. Real-browser/backend integration remains outstanding.
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+new file mode 100644
+index 0000000..1a5211f
+--- /dev/null
++++ b/docs/DECISIONS.md
+@@ -0,0 +1,50 @@
++# Frontend remediation decisions
++
++## D-001 — Use backend-managed HttpOnly JWT cookies
++
++**Decision:** The browser frontend does not read, persist, or transmit refresh/access token values in JavaScript. It uses credentialed requests and the backend's `techvoto_access` / `techvoto_refresh` cookies.
++
++**Evidence:** The backend source export contains `apps/users/cookies.py`, `CookieJWTAuthentication`, `CsrfCookieView`, `LoginView`, `RegisterView`, `CookieTokenRefreshView`, and `LogoutView`. Login/register return a user object and set HttpOnly cookies; refresh rotates cookies and returns a status body; logout blacklists the cookie token and clears cookies.
++
++**Consequences:** All unsafe requests must obtain and send a CSRF token. Cross-origin deployments require credentialed CORS, trusted CSRF origins, and compatible cookie SameSite/Secure/domain settings. Same-origin reverse proxy is preferred.
++
++## D-002 — Do not invent the production API origin
++
++**Decision:** Leave the deployment destination unresolved until the actual API hostname or hosting rewrite configuration is provided. Document the required `/api/*` rewrite or build-time `VITE_API_URL` configuration.
++
++**Reason:** The supplied archive and backend export do not establish a production API hostname. Hardcoding a guessed destination would create a false production configuration.
++
++## D-003 — Serialize refreshes across tabs where supported
++
++**Decision:** Use the browser Web Locks API to serialize refresh requests across tabs and retain a same-tab promise guard. If Web Locks is unavailable, fail closed and do not attempt automatic refresh. The browser must reauthenticate after session expiry. This is a deliberate browser-support restriction until the backend offers a safe cross-tab refresh protocol.
++
++## D-004 — Reacquire CSRF state after authentication transitions
++
++**Decision:** Clear the in-memory masked CSRF token after successful login and registration, then reacquire it from `GET /api/auth/csrf/` before publishing the new session to the UI.
++
++**Evidence:** The supplied backend `LoginView` and `RegisterView` are protected by `csrf_protect`, set HttpOnly auth cookies, and do not call Django's `rotate_token()` or `django.contrib.auth.login()`. The CSRF endpoint returns a masked token from Django `get_token()`. Reacquisition is retained to remain correct if the backend begins rotating CSRF state later.
++
++## D-005 — Preserve unknown session state on transient failures
++
++**Decision:** Only an API 401 is treated as confirmed unauthenticated. Network failures, 429, 5xx and unexpected statuses propagate as errors; the UI presents retry/recovery rather than redirecting to login.
++
++**Reason:** A service outage is not evidence that the user's cookie session is invalid. A cached, confirmed `{ user: null }` remains signed out even if a later background revalidation fails.
++
++## D-006 — Recheck session after acquiring cross-tab refresh lock
++
++**Decision:** Under the Web Lock, call `auth/me/` before refreshing. If it succeeds, another tab has already rotated the shared cookies and the late-401 request can be retried without another rotation.
++
++**Backend fallback finding:** `CookieTokenRefreshView` catches an invalid/blacklisted refresh token and returns 200 only when the access cookie in that request is still valid. If that access cookie is expired, it clears both auth cookies and returns 401. Therefore the backend fallback is not fully safe for simultaneous expired-access refreshes in browsers without Web Locks. No backend changes were made. The frontend now refuses automatic refresh without Web Locks instead of relying on that insufficient fallback.
++
++
++## D-007 — Fail closed when cross-tab refresh coordination is unavailable
++
++**Decision:** Do not run a rotating refresh request in a browser that lacks Web Locks.
++
++**Reason:** A localStorage/BroadcastChannel lease is not a robust substitute for an atomic browser lock: tabs can crash, leases can expire during a slow request, and stale owners can overlap. A fail-closed restriction avoids silently risking refresh-token rotation races.
++
++**Release implication:** Browsers without `navigator.locks.request` may authenticate but cannot safely auto-refresh. Either restrict supported browsers to Web Locks-capable browsers or add and verify backend-side atomic refresh grace/idempotency before broadening support.
++
++## D-008 — Test the API transport through an injectable production module
++
++**Decision:** Keep the browser API module as a thin binding around a dependency-injected transport so Node tests exercise the same CSRF, credentials, refresh and retry implementation used in production.
+diff --git a/docs/DEPLOYMENT.md b/docs/DEPLOYMENT.md
+new file mode 100644
+index 0000000..8d9a212
+--- /dev/null
++++ b/docs/DEPLOYMENT.md
+@@ -0,0 +1,16 @@
++# Frontend deployment notes
++
++- No deployment has been performed.
++- `vercel.json` currently has an SPA fallback and security/cache headers, but no `/api/*` rewrite.
++- For same-origin requests (`VITE_API_URL` empty), configure the hosting platform to proxy `/api/*` to the actual Django origin before the SPA fallback.
++- Alternatively, set `VITE_API_URL` at build time to the API origin and configure Django credentialed CORS and CSRF trusted origins for the frontend origin.
++- Confirm the cookie topology before release. Same-site subdomains commonly work with `SameSite=Lax`; genuinely cross-site cookies require `SameSite=None; Secure` and HTTPS. Set cookie domain only when required by the actual hostnames.
++- Verify `AUTH_COOKIE_SECURE=True` in production. Do not deploy with placeholder API origins.
++
++## Authentication/session release checks
++
++- Confirm production uses HTTPS and `AUTH_COOKIE_SECURE=True`.
++- Confirm cookie `SameSite`, cookie domain, credentialed CORS and CSRF trusted origins against the actual frontend/API hostnames.
++- Confirm the host routes `/api/*` to the actual Django origin before the SPA fallback, or provide `VITE_API_URL` at build time. TV-FE-002 remains blocked until that origin/configuration is known.
++- Run the committed GitHub Actions workflow (`npm ci`, `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`) in a connected CI runner. The workflow has not yet run. In this environment npm install failed (`EAI_AGAIN` / `Exit handler never called!` and offline `ENOTCACHED`); typecheck/build are not approved. The source-guard lint passes but is not a full ESLint configuration.
++- Exercise login, registration, reload, refresh rotation, logout, CSRF and simultaneous expired-access refresh in real browsers before release. Automatic refresh is restricted to browsers with `navigator.locks.request` (Web Locks). Browsers without Web Locks fail closed and require reauthentication after access expiry. Do not broaden support until a backend-side atomic refresh grace/idempotency protocol is implemented and verified. Real-browser/backend integration remains a release gate.
+diff --git a/docs/ISSUE_REGISTER.md b/docs/ISSUE_REGISTER.md
+new file mode 100644
+index 0000000..4b77270
+--- /dev/null
++++ b/docs/ISSUE_REGISTER.md
+@@ -0,0 +1,13 @@
++# Frontend issue register
++
++Status is based on the supplied frontend archive and backend source export. No Git history or live deployment configuration was available.
++
++| ID | Issue | Initial severity | Current status | Evidence / notes |
++|---|---|---:|---|---|
++| TV-FE-001 | Refresh token persisted in localStorage | Critical | **Source remediated; browser verification pending** | JWTs are now cookie-managed by the backend; frontend does not read or persist them. Login/register clear and reacquire the masked CSRF token after success. Backend views do not currently call `rotate_token()`, but reacquisition handles a future rotation. |
++| TV-FE-002 | Production API rewrite absent from Vercel config | High | **Blocked on deployment origin** | `vercel.json` has SPA fallback only. No backend hostname supplied; no production URL or rewrite destination has been invented. |
++| TV-FE-003 | Refresh rotation race across tabs | High | **Fail-closed restriction implemented; browser support gate required** | With Web Locks, tabs serialize refresh and probe `auth/me/` before rotating. Without Web Locks, the client now refuses automatic refresh rather than racing rotating cookies. Such browsers can sign in but cannot rely on automatic refresh; session recovery may require signing in again. The backend fallback is not treated as safe for simultaneous expired-access refresh. |
++| TV-FE-004 | Payment verification finite polling / no manual retry | Medium | **Isolated payment patch prepared; review pending** | Verification now preserves pending/unknown outcomes after polling exhaustion and offers manual recheck. No payment changes are included in the authentication patch. |
++| TV-FE-005 | No lint/test scripts | High | **Test, source-guard lint and CI workflow added; full checks pending** | Added `node --test`, a TypeScript-AST source guard (`npm run lint`), and GitHub Actions workflow running install, tests, lint, typecheck and build. This is a targeted source guard, not ESLint; adopt a full lint framework when registry access is available. |
++| TV-FE-006 | Account switching may retain previous SWR cache | High | **Source remediated; regression covered** | Login and registration clear the SWR cache before installing the new session. Logout clears cache and local session even if the logout request fails. |
++| TV-FE-007 | No automated regression tests supplied | High | **API-client and auth regression suites added; browser integration pending** | 21 dependency-free tests exercise the actual extracted API transport module plus auth transitions, CSRF, credentials, refresh/retry, temporary failures, multipart, concurrent requests and account switching. Web Locks is simulated; this is not real-browser/backend integration. |
+diff --git a/docs/TEST_REPORT.md b/docs/TEST_REPORT.md
+new file mode 100644
+index 0000000..a37e494
+--- /dev/null
++++ b/docs/TEST_REPORT.md
+@@ -0,0 +1,34 @@
++# Frontend remediation test report
++
++## Batch 1 review follow-up — authentication/session reliability
++
++### Executed checks
++
++- [x] `node --test tests/*.test.mjs` — **passed: 21 tests, 0 failures, exit 0**. Includes the 12 prior auth/session tests plus API transport integration for CSRF bootstrap/header, cookie credentials, login CSRF reacquisition, refresh probe/rotation/retry, 401 handling, transient failures, multipart, late 401, concurrent calls and no-Web-Locks fail-closed behavior.
++- [x] `npm run lint` — **passed, exit 0**. The custom TypeScript-AST source guard checked 74 TypeScript files for debugger statements, explicit `any`, console logging and TypeScript suppression directives. It is not ESLint and does not claim full style/rule coverage.
++- [x] JSON parsing of `package.json` and `vercel.json` — passed in prior run.
++- [ ] `npm ci --ignore-scripts --no-audit --no-fund --fetch-retries=0 --fetch-timeout=20000` — **failed, exit 1**. npm 10.9.2 emitted `Exit handler never called!`; prior run recorded `EAI_AGAIN` resolving `registry.npmjs.org`. Offline install also failed with `ENOTCACHED` for `zwitch@2.0.4`. The dependency tree is incomplete.
++- [ ] `npm run typecheck` — **failed, exit 2**: `TS2688: Cannot find type definition file for 'vite/client'`. This is an environment/dependency failure; no semantic typecheck pass is claimed.
++- [ ] `npm run build` — **failed, exit 2** at the same TypeScript prerequisite; Vite production bundling did not start.
++- [ ] GitHub Actions — workflow added but not executed. No repository remote/CI credentials or connected CI runner are available in this workspace.
++- [ ] Real-browser/backend tests — **not run**. No live Django endpoint or browser automation environment was provided.
++
++### API transport test boundary
++
++`tests/api-client.test.mjs` imports and exercises the same `src/lib/api-client.mjs` module bound by the production `src/lib/api.ts`. It uses a deterministic fake fetch transport and simulated Web Locks. It verifies request construction and refresh state transitions, but does not test an actual browser cookie jar, CORS, Django middleware, Paystack, or concurrent real HTTP requests.
++
++### Backend contract verification
++
++Reviewed the backend source export:
++
++- `apps/users/views.py`: `CsrfCookieView`, `RegisterView`, `LoginView`, `CookieTokenRefreshView`, `LogoutView`.
++- `apps/users/cookies.py`: HttpOnly access/refresh cookies; refresh cookie path `/api/auth/`.
++- `apps/users/urls.py`: `csrf/`, `register/`, `login/`, `logout/`, `token/refresh/`, `me/` routes.
++
++`LoginView` and `RegisterView` use `csrf_protect` and set auth cookies, but do not call `django.contrib.auth.login()` or `rotate_token()`. The CSRF endpoint returns a masked token using `get_token()`. Frontend still clears/reacquires after successful login/register.
++
++`CookieTokenRefreshView` catches invalid/blacklisted refresh tokens and checks the access cookie from that same request. If that access cookie remains valid, it returns 200 without issuing new cookies. If access is expired/invalid, it clears auth cookies and returns 401. This fallback does not guarantee safe simultaneous refresh when Web Locks are unavailable and access has expired.
++
++### Limitations
++
++The API-client suite exercises the production transport module using a fake fetch implementation and simulated Web Locks. It does not exercise real browser cookie jars, cross-origin CORS, Django middleware, or actual concurrent HTTP requests. Typecheck and production build remain unverified. Browsers without Web Locks fail closed and require reauthentication after expiry; broad release to those browsers is not approved without a backend coordination change. TV-FE-002 remains blocked pending the actual API hostname and hosting rewrite configuration.
+diff --git a/package.json b/package.json
+index be0793e..cda820b 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,9 @@
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+     "preview": "vite preview",
+-    "typecheck": "tsc --noEmit"
++    "typecheck": "tsc --noEmit",
++    "test": "node --test tests/*.test.mjs",
++    "lint": "node scripts/lint.mjs"
+   },
+   "dependencies": {
+     "@fontsource-variable/inter": "^5.1.0",
+diff --git a/scripts/lint.mjs b/scripts/lint.mjs
+new file mode 100644
+index 0000000..66241b0
+--- /dev/null
++++ b/scripts/lint.mjs
+@@ -0,0 +1,53 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import { createRequire } from 'node:module';
++import { execFileSync } from 'node:child_process';
++const localRequire = createRequire(import.meta.url);
++let ts;
++try { ts = localRequire('typescript'); }
++catch {
++  const globalModules = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
++  ts = createRequire(path.join(globalModules, '__lint__.cjs'))('typescript');
++}
++
++const root = path.resolve('src');
++const files = [];
++function walk(dir) {
++  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
++    const file = path.join(dir, entry.name);
++    if (entry.isDirectory()) walk(file);
++    else if (/\.(?:ts|tsx)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) files.push(file);
++  }
++}
++walk(root);
++const issues = [];
++for (const file of files) {
++  const source = fs.readFileSync(file, 'utf8');
++  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true,
++    file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
++  const report = (node, rule, message) => {
++    const { line, character } = tree.getLineAndCharacterOfPosition(node.getStart(tree));
++    issues.push(`${path.relative(process.cwd(), file)}:${line + 1}:${character + 1} ${rule} ${message}`);
++  };
++  if (/\/\/\s*@ts-ignore\b|\/\*\s*@ts-ignore\b|@ts-nocheck\b/.test(source)) {
++    const index = source.search(/@ts-(?:ignore|nocheck)\b/);
++    report(tree, 'no-ts-suppression', `TypeScript suppression directive at offset ${index}`);
++  }
++  function visit(node) {
++    if (ts.isDebuggerStatement(node)) report(node, 'no-debugger', 'Remove debugger statement.');
++    if (node.kind === ts.SyntaxKind.AnyKeyword) report(node, 'no-explicit-any', 'Use a concrete or unknown type.');
++    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
++      && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'console'
++      && ['log', 'debug', 'info'].includes(node.expression.name.text)) {
++      report(node, 'no-console', 'Remove console logging from application source.');
++    }
++    ts.forEachChild(node, visit);
++  }
++  visit(tree);
++}
++if (issues.length) {
++  process.stderr.write(`${issues.join('\n')}\n`);
++  process.exitCode = 1;
++} else {
++  process.stdout.write(`Source guard lint passed (${files.length} TypeScript files).\n`);
++}
+diff --git a/src/context/auth.tsx b/src/context/auth.tsx
+index 14d7d79..8e695bd 100644
+--- a/src/context/auth.tsx
++++ b/src/context/auth.tsx
+@@ -1,15 +1,19 @@
+ import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import useSWR, { useSWRConfig } from 'swr';
+-import { api, ApiError } from '@/lib/api';
+-import { clearTokens, getRefresh, hasSession, setTokens } from '@/lib/tokens';
+-import type { AuthResponse, User } from '@/types';
++import { api, ApiError, refreshCsrfAfterAuthentication } from '@/lib/api';
++import { clearCsrfToken } from '@/lib/csrf';
++import { completeAuthentication, completeLogout, restoreSession, sessionState, type SessionState } from '@/lib/auth-session.mjs';
++import type { User } from '@/types';
+ 
+ export interface RegisterPayload { first_name: string; last_name: string; email: string; password: string; password2: string }
+ 
+ interface AuthContextValue {
+   user: User | null;
+   loading: boolean;
++  status: SessionState;
++  sessionError: unknown;
++  retrySession: () => Promise<unknown>;
+   login: (email: string, password: string) => Promise<User>;
+   register: (payload: RegisterPayload) => Promise<User>;
+   logout: () => Promise<void>;
+@@ -21,48 +25,60 @@ const SESSION_KEY = '__session';
+ interface Session { user: User | null }
+ 
+ async function loadSession(): Promise<Session> {
+-  if (!hasSession()) return { user: null };
+-  try { return { user: await api<User>('auth/me/') }; }
+-  catch (e) { if (e instanceof ApiError && e.status === 401) return { user: null }; throw e; }
++  // HttpOnly cookies cannot be inspected by JavaScript. Ask the backend to
++  // validate the current access cookie; api() refreshes it once if necessary.
++  return restoreSession(() => api<User>('auth/me/')); // Only a confirmed API 401 means signed out.
+ }
+ 
+ export function AuthProvider({ children }: { children: ReactNode }) {
+-  const { data, isLoading, mutate } = useSWR<Session>(SESSION_KEY, loadSession, { revalidateOnFocus: false });
++  const { data, error, isLoading, mutate } = useSWR<Session>(SESSION_KEY, loadSession, {
++    revalidateOnFocus: false,
++    errorRetryCount: 3,
++    errorRetryInterval: 3000,
++  });
+   const { mutate: globalMutate } = useSWRConfig();
+   const navigate = useNavigate();
+   const user = data?.user ?? null;
++  const status = sessionState({ user, hasData: data !== undefined, loading: isLoading, error });
+ 
+   const login = useCallback(async (email: string, password: string) => {
+-    let d: AuthResponse;
+-    try { d = await api<AuthResponse>('auth/login/', { method: 'POST', body: { email, password }, auth: false }); }
++    let d: { user: User };
++    try { d = await api<{ user: User }>('auth/login/', { method: 'POST', body: { email, password }, auth: false }); }
+     catch (e) {
+       if (e instanceof ApiError && e.status === 401) throw new ApiError(401, { detail: 'Incorrect email or password.' });
+       throw e;
+     }
+-    setTokens({ access: d.access, refresh: d.refresh });
+-    await mutate({ user: d.user }, false);
+-    return d.user;
+-  }, [mutate]);
++    return completeAuthentication({
++      user: d.user,
++      refreshCsrf: refreshCsrfAfterAuthentication,
++      clearCache: () => globalMutate(() => true, undefined, { revalidate: false }),
++      setSession: (session) => mutate(session, false),
++    });
++  }, [globalMutate, mutate]);
+ 
+   const register = useCallback(async (payload: RegisterPayload) => {
+-    const d = await api<AuthResponse>('auth/register/', { method: 'POST', body: payload, auth: false });
+-    setTokens({ access: d.access, refresh: d.refresh });
+-    await mutate({ user: d.user }, false);
+-    return d.user;
+-  }, [mutate]);
++    const d = await api<{ user: User }>('auth/register/', { method: 'POST', body: payload, auth: false });
++    return completeAuthentication({
++      user: d.user,
++      refreshCsrf: refreshCsrfAfterAuthentication,
++      clearCache: () => globalMutate(() => true, undefined, { revalidate: false }),
++      setSession: (session) => mutate(session, false),
++    });
++  }, [globalMutate, mutate]);
+ 
+   const logout = useCallback(async () => {
+-    const refresh = getRefresh();
+-    if (refresh) await api('auth/logout/', { method: 'POST', body: { refresh } }).catch(() => undefined);   // best effort: blacklist server-side
+-    clearTokens();
+-    await globalMutate(() => true, undefined, { revalidate: false });   // drop every cached response of the previous user
+-    await mutate({ user: null }, false);
+-    navigate('/login', { replace: true });
++    await completeLogout({
++      logoutRequest: () => api('auth/logout/', { method: 'POST' }), // Backend blacklists refresh cookie and clears auth cookies.
++      clearCsrf: clearCsrfToken,
++      clearCache: () => globalMutate(() => true, undefined, { revalidate: false }),
++      setSession: (session) => mutate(session, false),
++      navigate,
++    });
+   }, [globalMutate, mutate, navigate]);
+ 
+   const value = useMemo<AuthContextValue>(
+-    () => ({ user, loading: isLoading, login, register, logout, refresh: () => mutate() }),
+-    [user, isLoading, login, register, logout, mutate],
++    () => ({ user, loading: status === 'loading' || status === 'unknown', status, sessionError: error, retrySession: () => mutate(), login, register, logout, refresh: () => mutate() }),
++    [user, status, error, login, register, logout, mutate],
+   );
+   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+ }
+diff --git a/src/layouts/layouts.tsx b/src/layouts/layouts.tsx
+index eb43ff3..cb96f82 100644
+--- a/src/layouts/layouts.tsx
++++ b/src/layouts/layouts.tsx
+@@ -1,6 +1,6 @@
+ import { Award, BookOpenCheck, Video, type LucideIcon } from 'lucide-react';
+ import { Suspense, useEffect, type ReactNode } from 'react';
+-import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
++import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+ import AppShell from '@/components/AppShell';
+ import Logo from '@/components/Logo';
+ import { CardGridSkeleton, PageSkeleton } from '@/components/Skeletons';
+@@ -40,10 +40,23 @@ const POINTS: [LucideIcon, string, string][] = [
+   [Award, 'Certificates employers can verify', 'Every certificate has a public verification link.'],
+ ];
+ 
++
++function SessionRecovery({ onRetry, message = 'We could not verify your session. Retry the check or sign in again.' }: { onRetry: () => void; message?: string }) {
++  return (
++    <div role="alert" className="mb-5 rounded-xl border border-warning/50 bg-warning/10 p-4 text-sm text-foreground">
++      <p>{message}</p>
++      <div className="mt-3 flex flex-wrap items-center gap-3">
++        <button type="button" className="rounded-lg border border-warning px-3 py-2 font-medium" onClick={onRetry}>Retry session check</button>
++        <Link to="/login" className="font-medium underline underline-offset-2">Sign in again</Link>
++      </div>
++    </div>
++  );
++}
++
+ /** Login / register / reset: split-screen, signed-in visitors are sent to their dashboard. */
+ export function AuthLayout() {
+-  const { user, loading } = useAuth();
+-  if (!loading && user) return <Navigate to="/dashboard" replace />;
++  const { user, status, retrySession, sessionError } = useAuth();
++  if (status === 'authenticated' && user) return <Navigate to="/dashboard" replace />;
+   return (
+     <div className="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+       <aside className="relative hidden flex-col justify-between overflow-hidden bg-[#0b1f3a] p-12 text-white lg:flex">
+@@ -67,6 +80,7 @@ export function AuthLayout() {
+         <div className="absolute right-4 top-4"><ThemeToggle /></div>
+         <div className="w-full max-w-sm">
+           <div className="mb-8 lg:hidden"><Logo /></div>
++          {status === 'unknown' && <SessionRecovery message={sessionError instanceof Error ? sessionError.message : undefined} onRetry={() => { void retrySession(); }} />}
+           <Suspense fallback={null}><Outlet /></Suspense>
+         </div>
+       </main>
+@@ -76,10 +90,11 @@ export function AuthLayout() {
+ 
+ /** Private pages. Replaces Next's middleware: signed-out visitors go to /login and come back afterwards. */
+ export function AppLayout() {
+-  const { user, loading } = useAuth();
++  const { user, status, retrySession, sessionError } = useAuth();
+   const { pathname, search } = useLocation();
+-  if (loading) return <div className="mx-auto max-w-page p-6"><PageSkeleton /></div>;
+-  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(pathname + search)}`} replace />;
++  if (status === 'loading') return <div className="mx-auto max-w-page p-6"><PageSkeleton /></div>;
++  if (status === 'unknown') return <div className="mx-auto max-w-page p-6"><SessionRecovery onRetry={() => { void retrySession(); }} /></div>;
++  if (status === 'unauthenticated' || !user) return <Navigate to={`/login?next=${encodeURIComponent(pathname + search)}`} replace />;
+   return (
+     <AppShell>
+       <Suspense fallback={<PageSkeleton />}><Outlet /></Suspense>
+@@ -89,9 +104,9 @@ export function AppLayout() {
+ 
+ /** Role gate nested inside AppLayout; other roles are sent to the dashboard. */
+ export function RoleGate({ roles, children }: { roles: Role[]; children?: ReactNode }) {
+-  const { user, loading } = useAuth();
++  const { user, status } = useAuth();
+   const navigate = useNavigate();
+   const ok = !!user && roles.includes(user.role);
+-  useEffect(() => { if (!loading && user && !ok) navigate('/dashboard', { replace: true }); }, [loading, user, ok, navigate]);
+-  return ok ? <>{children ?? <Outlet />}</> : <PageSkeleton />;
++  useEffect(() => { if (status === 'authenticated' && user && !ok) navigate('/dashboard', { replace: true }); }, [status, user, ok, navigate]);
++  return status === 'authenticated' && ok ? <>{children ?? <Outlet />}</> : <PageSkeleton />;
+ }
+diff --git a/src/lib/api-client.d.mts b/src/lib/api-client.d.mts
+new file mode 100644
+index 0000000..e2b8a3e
+--- /dev/null
++++ b/src/lib/api-client.d.mts
+@@ -0,0 +1,27 @@
++export class ClientApiError extends Error {
++  status: number;
++  data: unknown;
++  constructor(status: number, data: unknown);
++}
++export interface ApiClientOptions {
++  base?: string;
++  fetchImpl: typeof fetch;
++  getCachedCsrf: () => string | null;
++  setCachedCsrf: (token: string) => void;
++  clearCachedCsrf: () => void;
++  locks?: { request<T>(name: string, callback: () => Promise<T>): Promise<T> };
++}
++export interface ApiOptions {
++  method?: string;
++  body?: unknown;
++  form?: FormData;
++  auth?: boolean;
++}
++export function createApiClient(options: ApiClientOptions): {
++  api<T = unknown>(path: string, options?: ApiOptions): Promise<T>;
++  raw(path: string, init?: RequestInit): Promise<Response>;
++  send(path: string, init?: RequestInit): Promise<Response>;
++  getCsrf(): Promise<string>;
++  reacquireCsrf(): Promise<boolean>;
++  refreshAccess(): Promise<boolean>;
++};
+diff --git a/src/lib/api-client.mjs b/src/lib/api-client.mjs
+new file mode 100644
+index 0000000..6956a25
+--- /dev/null
++++ b/src/lib/api-client.mjs
+@@ -0,0 +1,104 @@
++import { coordinatedRefresh, csrfHeader } from './auth-session.mjs';
++
++const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
++
++function formatApiError(status, data) {
++  if (!data) return 'Something went wrong. Please try again.';
++  if (typeof data === 'string') return data;
++  if (data.detail) return String(data.detail);
++  const first = Object.entries(data)[0];
++  if (!first) return 'Something went wrong. Please try again.';
++  const [field, value] = first;
++  const message = Array.isArray(value) ? value[0] : typeof value === 'object' ? JSON.stringify(value) : value;
++  return field === 'non_field_errors' ? String(message) : `${field.replace(/_/g, ' ')}: ${String(message)}`;
++}
++
++export class ClientApiError extends Error {
++  constructor(status, data) {
++    super(formatApiError(status, data) || `Request failed (${status})`);
++    this.status = status;
++    this.data = data;
++  }
++}
++
++/** Injectable transport used by the browser API module and integration tests. */
++export function createApiClient({ base = '', fetchImpl, getCachedCsrf, setCachedCsrf, clearCachedCsrf, locks }) {
++  const endpoint = (path) => `${base.replace(/\/$/, '')}/api/${path.replace(/^\/+/, '')}`;
++  let csrfRequest = null;
++  let refreshing = null;
++
++  async function getCsrf() {
++    const cached = getCachedCsrf();
++    if (cached) return cached;
++    if (!csrfRequest) {
++      csrfRequest = fetchImpl(endpoint('auth/csrf/'), { credentials: 'include' })
++        .then(async (res) => {
++          const data = await res.json().catch(() => null);
++          if (!res.ok || !data?.csrfToken) throw new ClientApiError(res.status, data);
++          setCachedCsrf(data.csrfToken);
++          return data.csrfToken;
++        }).finally(() => { csrfRequest = null; });
++    }
++    return csrfRequest;
++  }
++
++  async function send(path, init = {}) {
++    const headers = new Headers(init.headers);
++    const method = (init.method ?? 'GET').toUpperCase();
++    if (UNSAFE_METHODS.has(method)) {
++      const [name, token] = await csrfHeader(getCsrf);
++      headers.set(name, token);
++    }
++    return fetchImpl(endpoint(path), { ...init, headers, credentials: 'include' });
++  }
++
++  async function probeSession() {
++    const res = await send('auth/me/', { method: 'GET' });
++    if (res.ok) return 'authenticated';
++    if (res.status === 401) return 'unauthenticated';
++    throw new ClientApiError(res.status, await res.json().catch(() => null));
++  }
++
++  async function doRefresh() {
++    const res = await send('auth/token/refresh/', { method: 'POST' });
++    if (res.status === 401) { clearCachedCsrf(); return false; }
++    if (!res.ok) throw new ClientApiError(res.status, await res.json().catch(() => null));
++    return true;
++  }
++
++  function refreshAccess() {
++    if (!refreshing) {
++      refreshing = coordinatedRefresh({ locks, probeSession, refresh: doRefresh })
++        .finally(() => { refreshing = null; });
++    }
++    return refreshing;
++  }
++
++  async function raw(path, init = {}) {
++    const res = await send(path, init);
++    if (res.status !== 401) return res;
++    const refreshed = await refreshAccess();
++    return refreshed ? send(path, init) : res;
++  }
++
++  async function api(path, { method = 'GET', body, form, auth = true } = {}) {
++    const headers = {};
++    let payload;
++    if (form) payload = form;
++    else if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
++    const init = { method, headers, body: payload };
++    const res = auth ? await raw(path, init) : await send(path, init);
++    if (res.status === 204 || res.status === 205) return null;
++    const data = await res.json().catch(() => null);
++    if (!res.ok) throw new ClientApiError(res.status, data);
++    return data;
++  }
++
++  async function reacquireCsrf() {
++    clearCachedCsrf();
++    try { await getCsrf(); return true; }
++    catch { clearCachedCsrf(); return false; }
++  }
++
++  return { api, raw, send, getCsrf, reacquireCsrf, refreshAccess };
++}
+diff --git a/src/lib/api.ts b/src/lib/api.ts
+index 023e28e..fdaf265 100644
+--- a/src/lib/api.ts
++++ b/src/lib/api.ts
+@@ -1,9 +1,9 @@
+-import { clearTokens, getAccess, getRefresh, setTokens } from './tokens';
++import { clearCsrfToken, getCsrfToken, setCsrfToken } from './csrf';
+ import type { Listish } from '@/types';
++import { createApiClient, ClientApiError } from './api-client.mjs';
+ 
+-/** Empty = same origin (dev proxy, or a host rewrite of /api/*). Otherwise the API origin; needs CORS on Django. */
++/** Empty = same origin (Vite dev proxy or a production /api reverse proxy). */
+ export const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+-const url = (path: string) => `${API_BASE}/api/${path.replace(/^\/+/, '')}`;
+ 
+ export function errorMessage(err: unknown): string {
+   const e = err as { data?: unknown; message?: string } | null | undefined;
+@@ -19,91 +19,33 @@ export function errorMessage(err: unknown): string {
+   return field === 'non_field_errors' ? String(text) : `${field.replace(/_/g, ' ')}: ${String(text)}`;
+ }
+ 
+-export class ApiError extends Error {
+-  status: number;
+-  data: unknown;
+-  constructor(status: number, data: unknown) {
+-    super(errorMessage({ status, data }));
+-    this.status = status;
+-    this.data = data;
+-  }
+-}
+-
+-// Refresh tokens rotate and the old one is blacklisted, so parallel 401s must share ONE refresh call.
+-let refreshing: Promise<string | null> | null = null;
+-
+-async function doRefresh(): Promise<string | null> {
+-  const used = getRefresh();
+-  if (!used) return null;
+-  const attempt = (token: string) => fetch(url('auth/token/refresh/'), {
+-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ refresh: token }),
+-  });
+-  try {
+-    let res = await attempt(used);
+-    if (res.status === 401) {                       // another tab may have rotated the token already
+-      const latest = getRefresh();
+-      if (latest && latest !== used) res = await attempt(latest);
+-    }
+-    if (!res.ok) {
+-      if (res.status === 401) clearTokens();        // genuinely invalid; a 5xx or 429 must not sign anyone out
+-      return null;
+-    }
+-    const data = (await res.json()) as { access: string; refresh?: string };
+-    setTokens({ access: data.access, refresh: data.refresh });
+-    return data.access;
+-  } catch { return null; }                          // offline: keep the tokens, fail the request
+-}
+-
+-export function refreshAccess(): Promise<string | null> {
+-  if (!refreshing) refreshing = doRefresh().finally(() => { refreshing = null; });
+-  return refreshing;
+-}
++export class ApiError extends ClientApiError {}
+ 
+-function send(path: string, init: RequestInit, token: string | null) {
+-  const headers = new Headers(init.headers);
+-  if (token) headers.set('authorization', `Bearer ${token}`);
+-  return fetch(url(path), { ...init, headers });
+-}
+-
+-/** Authenticated fetch with transparent token refresh. Returns the raw Response. */
+-export async function raw(path: string, init: RequestInit = {}): Promise<Response> {
+-  let token = getAccess();
+-  if (!token && getRefresh()) token = await refreshAccess();
+-  let res = await send(path, init, token);
+-  if (res.status === 401 && getRefresh()) {
+-    const current = getAccess();
+-    const fresh = current && current !== token ? current : await refreshAccess();   // someone may have refreshed already
+-    if (fresh) res = await send(path, init, fresh);
+-  }
+-  return res;
+-}
+-
+-export interface ApiOptions { method?: string; body?: unknown; form?: FormData; auth?: boolean }
+-
+-export async function api<T = unknown>(path: string, { method = 'GET', body, form, auth = true }: ApiOptions = {}): Promise<T> {
+-  const headers: Record<string, string> = {};
+-  let payload: BodyInit | undefined;
+-  if (form) payload = form;                         // FormData: the browser sets the multipart boundary
+-  else if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+-  const init: RequestInit = { method, headers, body: payload };
+-  const res = auth ? await raw(path, init) : await send(path, init, null);
+-  if (res.status === 204 || res.status === 205) return null as T;
+-  const data = await res.json().catch(() => null);
+-  if (!res.ok) throw new ApiError(res.status, data);
+-  return data as T;
+-}
++const client = createApiClient({
++  base: API_BASE,
++  fetchImpl: (...args: Parameters<typeof fetch>) => fetch(...args),
++  getCachedCsrf: getCsrfToken,
++  setCachedCsrf: setCsrfToken,
++  clearCachedCsrf: clearCsrfToken,
++  locks: typeof navigator !== 'undefined'
++    ? (navigator as Navigator & { locks?: { request<T>(name: string, callback: () => Promise<T>): Promise<T> } }).locks
++    : undefined,
++});
+ 
+-export const fetcher = <T = unknown>(path: string) => api<T>(path);
++export const raw = client.raw;
++export const api = client.api;
++export const refreshCsrfAfterAuthentication = client.reacquireCsrf;
++export const fetcher = <T = unknown>(path: string) => api(path) as Promise<T>;
+ export const list = <T>(data: Listish<T> | null | undefined): T[] => (Array.isArray(data) ? data : data?.results ?? []);
+ 
+-/** Permission-checked files need the Authorization header, so they are fetched and saved as a blob. */
++/** Permission-checked API files use the same HttpOnly-cookie session. */
+ export async function downloadFile(fileLink: string, fallbackName = 'download') {
+   const i = fileLink.indexOf('/api/');
+   const res = i >= 0 ? await raw(fileLink.slice(i + 5)) : await fetch(fileLink);
+   if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null));
+   const blob = await res.blob();
+   const cd = res.headers.get('content-disposition') ?? '';
+-  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
++  const m = /filename\\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+   const base = fileLink.split('?')[0].split('/').filter(Boolean).pop();
+   const name = m ? decodeURIComponent(m[1]) : base ? decodeURIComponent(base) : fallbackName;
+   const href = URL.createObjectURL(blob);
+diff --git a/src/lib/auth-session.d.mts b/src/lib/auth-session.d.mts
+new file mode 100644
+index 0000000..e2e3829
+--- /dev/null
++++ b/src/lib/auth-session.d.mts
+@@ -0,0 +1,12 @@
++export type SessionState = 'loading' | 'authenticated' | 'unauthenticated' | 'unknown';
++export function reacquireCsrfToken(handlers: { clear: () => void; get: () => Promise<string> }): Promise<boolean>;
++export function sessionState(input: { user: unknown; hasData?: boolean; loading: boolean; error: unknown }): SessionState;
++export function csrfHeader(getToken: () => Promise<string>): Promise<[string, string]>;
++export function coordinatedRefresh(input: {
++  locks?: { request<T>(name: string, callback: () => Promise<T>): Promise<T> };
++  probeSession: () => Promise<'authenticated' | 'unauthenticated' | 'unknown'>;
++  refresh: () => Promise<boolean>;
++}): Promise<boolean>;
++export function restoreSession<T>(getCurrentUser: () => Promise<T>): Promise<{ user: T | null }>;
++export function completeAuthentication<T>(input: { user: T; refreshCsrf: () => Promise<unknown>; clearCache: () => Promise<unknown>; setSession: (session: { user: T }) => Promise<unknown> }): Promise<T>;
++export function completeLogout(input: { logoutRequest: () => Promise<unknown>; clearCsrf: () => void; clearCache: () => Promise<unknown>; setSession: (session: { user: null }) => Promise<unknown>; navigate: (path: string, options: { replace: boolean }) => void }): Promise<void>;
+diff --git a/src/lib/auth-session.mjs b/src/lib/auth-session.mjs
+new file mode 100644
+index 0000000..770db2f
+--- /dev/null
++++ b/src/lib/auth-session.mjs
+@@ -0,0 +1,77 @@
++/** Pure helpers shared by the cookie-auth client and dependency-free regression tests. */
++export async function reacquireCsrfToken({ clear, get }) {
++  clear();
++  try {
++    await get();
++    return true;
++  } catch {
++    // Leave the cache empty so the next unsafe request retries acquisition.
++    clear();
++    return false;
++  }
++}
++
++export function sessionState({ user, hasData, loading, error }) {
++  if (user) return 'authenticated';
++  // A cached { user: null } is the result of a confirmed 401, even if a later
++  // background revalidation failed temporarily.
++  if (hasData) return 'unauthenticated';
++  if (loading) return 'loading';
++  if (error) return 'unknown';
++  return 'unauthenticated';
++}
++
++/**
++ * After an initial 401, acquire the cross-tab lock and check whether another tab
++ * has already refreshed the shared HttpOnly cookies before rotating again.
++ */
++export async function coordinatedRefresh({ locks, probeSession, refresh }) {
++  const run = async () => {
++    const probe = await probeSession();
++    if (probe === 'authenticated') return true;
++    if (probe !== 'unauthenticated') {
++      throw new Error('Session status is temporarily unknown; refresh was not attempted.');
++    }
++    return refresh();
++  };
++  if (!locks?.request) {
++    // Fail closed: an unlocked refresh can race another tab and invalidate the
++    // shared rotating refresh cookie. Do not pretend this is safe.
++    throw new Error('Cross-tab session refresh requires browser Web Locks support. Please sign in again or use a supported browser.');
++  }
++  return locks.request('techvoto-auth-refresh', run);
++}
++
++export async function csrfHeader(getToken) {
++  return ['X-CSRFToken', await getToken()];
++}
++
++/** A confirmed 401 is signed-out; every other failure remains an error/unknown. */
++export async function restoreSession(getCurrentUser) {
++  try {
++    return { user: await getCurrentUser() };
++  } catch (error) {
++    if (error && error.status === 401) return { user: null };
++    throw error;
++  }
++}
++
++/** Apply a successful login/register without retaining another account's cache. */
++export async function completeAuthentication({ user, refreshCsrf, clearCache, setSession }) {
++  await refreshCsrf();
++  await clearCache();
++  await setSession({ user });
++  return user;
++}
++
++/** Always clear local identity/cache even if the server logout request fails. */
++export async function completeLogout({ logoutRequest, clearCsrf, clearCache, setSession, navigate }) {
++  try {
++    await logoutRequest();
++  } finally {
++    clearCsrf();
++    await clearCache();
++    await setSession({ user: null });
++    navigate('/login', { replace: true });
++  }
++}
+diff --git a/src/lib/csrf.ts b/src/lib/csrf.ts
+new file mode 100644
+index 0000000..0fbb5c6
+--- /dev/null
++++ b/src/lib/csrf.ts
+@@ -0,0 +1,7 @@
++// Django owns the access and refresh tokens in HttpOnly cookies. The CSRF token
++// is intentionally kept in memory only and is sent in X-CSRFToken on unsafe requests.
++let csrfToken: string | null = null;
++
++export const getCsrfToken = () => csrfToken;
++export const setCsrfToken = (token: string) => { csrfToken = token; };
++export const clearCsrfToken = () => { csrfToken = null; };
+diff --git a/src/lib/tokens.ts b/src/lib/tokens.ts
+deleted file mode 100644
+index 95474a0..0000000
+--- a/src/lib/tokens.ts
++++ /dev/null
+@@ -1,19 +0,0 @@
+-// Access token lives in memory only. The refresh token is kept in localStorage so a reload keeps you signed in.
+-const REFRESH_KEY = 'tv_refresh';
+-let access: string | null = null;
+-
+-export const getAccess = () => access;
+-
+-export function getRefresh(): string | null {
+-  try { return localStorage.getItem(REFRESH_KEY); } catch { return null; }
+-}
+-export const hasSession = () => !!getRefresh();
+-
+-export function setTokens(t: { access?: string; refresh?: string }) {
+-  if (t.access) access = t.access;
+-  if (t.refresh) { try { localStorage.setItem(REFRESH_KEY, t.refresh); } catch { /* storage blocked */ } }
+-}
+-export function clearTokens() {
+-  access = null;
+-  try { localStorage.removeItem(REFRESH_KEY); } catch { /* storage blocked */ }
+-}
+diff --git a/src/types.ts b/src/types.ts
+index 2f29de6..736b27b 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -10,7 +10,6 @@ export interface User {
+   avatar: string | null; bio?: string; email_verified: boolean; xp: number; streak: number;
+   date_joined?: string; is_active?: boolean;
+ }
+-export interface AuthResponse { access: string; refresh: string; user: User }
+ 
+ export interface Category { id: number; name: string; slug: string }
+ export interface InstructorBrief { id?: number; full_name: string; avatar?: string | null; bio?: string }
+diff --git a/tests/api-client.test.mjs b/tests/api-client.test.mjs
+new file mode 100644
+index 0000000..1fb57b6
+--- /dev/null
++++ b/tests/api-client.test.mjs
+@@ -0,0 +1,162 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createApiClient } from '../src/lib/api-client.mjs';
++
++const json = (data, status = 200) => new Response(JSON.stringify(data), {
++  status, headers: { 'content-type': 'application/json' },
++});
++function locks() {
++  let tail = Promise.resolve();
++  return { request: async (_name, fn) => {
++    const before = tail; let release;
++    tail = new Promise((resolve) => { release = resolve; });
++    await before;
++    try { return await fn(); } finally { release(); }
++  } };
++}
++function fixture(fetchImpl, lockManager = locks()) {
++  let csrf = null;
++  const client = createApiClient({
++    base: 'https://api.example.test/', fetchImpl,
++    getCachedCsrf: () => csrf,
++    setCachedCsrf: (v) => { csrf = v; },
++    clearCachedCsrf: () => { csrf = null; },
++    locks: lockManager,
++  });
++  return { client, getCsrf: () => csrf };
++}
++
++test('unsafe API call acquires CSRF, sends matching header and includes cookies', async () => {
++  const calls = [];
++  const { client } = fixture(async (url, init) => {
++    calls.push({ url, init });
++    if (String(url).endsWith('/auth/csrf/')) return json({ csrfToken: 'masked-1' });
++    return json({ ok: true });
++  });
++  assert.deepEqual(await client.api('courses/enroll/', { method: 'POST', body: { course: 'abc' } }), { ok: true });
++  assert.equal(calls.length, 2);
++  assert.match(calls[0].url, /\/api\/auth\/csrf\/$/);
++  assert.equal(calls[0].init.credentials, 'include');
++  assert.equal(calls[1].init.credentials, 'include');
++  assert.equal(calls[1].init.headers.get('X-CSRFToken'), 'masked-1');
++  assert.equal(calls[1].init.headers.get('content-type'), 'application/json');
++  assert.equal(calls[1].init.body, JSON.stringify({ course: 'abc' }));
++});
++
++test('login CSRF reacquisition clears stale token and obtains a new masked token', async () => {
++  let csrfCalls = 0;
++  const { client, getCsrf } = fixture(async (url) => {
++    if (String(url).endsWith('/auth/csrf/')) return json({ csrfToken: `masked-${++csrfCalls}` });
++    return json({ user: { id: 7 } });
++  });
++  await client.api('auth/login/', { method: 'POST', body: { email: 'a@b.test', password: 'secret' }, auth: false });
++  assert.equal(getCsrf(), 'masked-1');
++  assert.equal(await client.reacquireCsrf(), true);
++  assert.equal(getCsrf(), 'masked-2');
++});
++
++test('expired access probes session, rotates refresh cookie, and retries original request once', async () => {
++  const calls = [];
++  let protectedHits = 0;
++  const { client } = fixture(async (url, init) => {
++    const path = String(url).replace('https://api.example.test/api/', '');
++    calls.push({ path, method: init.method });
++    if (path === 'private/data/') return ++protectedHits === 1 ? json({ detail: 'expired' }, 401) : json({ value: 42 });
++    if (path === 'auth/me/') return json({ detail: 'expired' }, 401);
++    if (path === 'auth/csrf/') return json({ csrfToken: 'csrf' });
++    if (path === 'auth/token/refresh/') return new Response(null, { status: 200 });
++    throw new Error(`Unexpected ${path}`);
++  });
++  assert.deepEqual(await client.api('private/data/'), { value: 42 });
++  assert.deepEqual(calls.map((c) => c.path), ['private/data/', 'auth/me/', 'auth/csrf/', 'auth/token/refresh/', 'private/data/']);
++});
++
++test('refresh 401 is not retried and is returned as the original unauthorized response', async () => {
++  const { client } = fixture(async (url) => {
++    const path = String(url);
++    if (path.endsWith('/auth/me/')) return json({}, 401);
++    if (path.endsWith('/auth/token/refresh/')) return json({}, 401);
++    return json({}, 401);
++  });
++  await assert.rejects(client.api('private/data/'), (e) => e.status === 401);
++});
++
++test('transient auth probe errors propagate and never call refresh or disguise the 401', async () => {
++  const paths = [];
++  const { client } = fixture(async (url) => {
++    const p = String(url); paths.push(p);
++    if (p.endsWith('/auth/me/')) return json({ detail: 'temporarily unavailable' }, 503);
++    return json({}, 401);
++  });
++  await assert.rejects(client.api('private/data/'), (e) => e.status === 503);
++  assert.equal(paths.some((p) => p.endsWith('/auth/token/refresh/')), false);
++});
++
++test('refresh without Web Locks fails closed instead of racing another tab', async () => {
++  let refreshCalls = 0;
++  // Model a browser without Web Locks.
++  const noLockClient = createApiClient({
++    base: '', fetchImpl: async (url) => {
++      const p = String(url);
++      if (p.endsWith('/auth/me/')) return json({}, 401);
++      if (p.endsWith('/auth/token/refresh/')) { refreshCalls += 1; return new Response(null, { status: 200 }); }
++      return json({}, 401);
++    }, getCachedCsrf: () => 'csrf', setCachedCsrf: () => {}, clearCachedCsrf: () => {}, locks: undefined,
++  });
++  await assert.rejects(noLockClient.api('private/data/'), /Web Locks support/);
++  assert.equal(refreshCalls, 0);
++});
++
++test('multipart request keeps browser boundary ownership and sends CSRF', async () => {
++  let seen;
++  const form = new FormData(); form.set('title', 'hello');
++  const { client } = fixture(async (url, init) => {
++    if (String(url).endsWith('/auth/csrf/')) return json({ csrfToken: 'form-csrf' });
++    seen = init; return json({ ok: true });
++  });
++  await client.api('upload/', { method: 'POST', form });
++  assert.equal(seen.headers.get('X-CSRFToken'), 'form-csrf');
++  assert.equal(seen.headers.has('content-type'), false);
++  assert.equal(seen.body, form);
++});
++
++test('a late 401 observes the already-refreshed session and does not rotate twice', async () => {
++  let authenticated = false;
++  let refreshCount = 0;
++  let protectedHits = 0;
++  const { client } = fixture(async (url) => {
++    const p = String(url);
++    if (p.endsWith('/private/data/')) {
++      protectedHits += 1;
++      if (protectedHits === 1) return json({}, 401);
++      return json({ ok: true });
++    }
++    if (p.endsWith('/auth/me/')) return authenticated ? json({ id: 1 }) : json({}, 401);
++    if (p.endsWith('/auth/csrf/')) return json({ csrfToken: 'csrf' });
++    if (p.endsWith('/auth/token/refresh/')) { refreshCount += 1; authenticated = true; return new Response(null, { status: 200 }); }
++    throw new Error(`Unexpected ${p}`);
++  });
++  assert.deepEqual(await client.api('private/data/'), { ok: true });
++  assert.equal(refreshCount, 1);
++});
++
++test('concurrent requests in one tab share the in-flight refresh', async () => {
++  let authenticated = false;
++  let refreshCount = 0;
++  const { client } = fixture(async (url) => {
++    const p = String(url);
++    if (p.endsWith('/private/a/') || p.endsWith('/private/b/')) return authenticated ? json({ ok: true }) : json({}, 401);
++    if (p.endsWith('/auth/me/')) return authenticated ? json({ id: 1 }) : json({}, 401);
++    if (p.endsWith('/auth/csrf/')) return json({ csrfToken: 'csrf' });
++    if (p.endsWith('/auth/token/refresh/')) {
++      refreshCount += 1;
++      await new Promise((resolve) => setTimeout(resolve, 5));
++      authenticated = true;
++      return new Response(null, { status: 200 });
++    }
++    throw new Error(`Unexpected ${p}`);
++  });
++  const results = await Promise.all([client.api('private/a/'), client.api('private/b/')]);
++  assert.deepEqual(results, [{ ok: true }, { ok: true }]);
++  assert.equal(refreshCount, 1);
++});
+diff --git a/tests/auth-session.test.mjs b/tests/auth-session.test.mjs
+new file mode 100644
+index 0000000..9434a67
+--- /dev/null
++++ b/tests/auth-session.test.mjs
+@@ -0,0 +1,161 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {
++  completeAuthentication,
++  completeLogout,
++  coordinatedRefresh,
++  csrfHeader,
++  reacquireCsrfToken,
++  restoreSession,
++  sessionState,
++} from '../src/lib/auth-session.mjs';
++
++function webLockManager() {
++  let tail = Promise.resolve();
++  return {
++    request: async (_name, callback) => {
++      const previous = tail;
++      let release;
++      tail = new Promise((resolve) => { release = resolve; });
++      await previous;
++      try { return await callback(); } finally { release(); }
++    },
++  };
++}
++
++test('login completion reacquires CSRF before setting the authenticated session', async () => {
++  const events = [];
++  const user = { id: 1, email: 'one@example.test' };
++  await completeAuthentication({
++    user,
++    refreshCsrf: async () => events.push('csrf'),
++    clearCache: async () => events.push('cache'),
++    setSession: async (session) => events.push(session.user.id),
++  });
++  assert.deepEqual(events, ['csrf', 'cache', 1]);
++});
++
++test('registration completion uses the same CSRF and cache isolation sequence', async () => {
++  const events = [];
++  const user = { id: 2, email: 'new@example.test' };
++  await completeAuthentication({
++    user,
++    refreshCsrf: async () => events.push('csrf-reacquired'),
++    clearCache: async () => events.push('cache-cleared'),
++    setSession: async (session) => events.push(`session-${session.user.id}`),
++  });
++  assert.deepEqual(events, ['csrf-reacquired', 'cache-cleared', 'session-2']);
++});
++
++test('page reload restores a valid cookie session', async () => {
++  const user = { id: 3 };
++  assert.deepEqual(await restoreSession(async () => user), { user });
++  assert.equal(sessionState({ user, loading: false, error: null }), 'authenticated');
++});
++
++test('expired access cookie triggers refresh only after auth/me confirms 401', async () => {
++  let refreshed = 0;
++  const result = await coordinatedRefresh({
++    locks: webLockManager(),
++    probeSession: async () => 'unauthenticated',
++    refresh: async () => { refreshed += 1; return true; },
++  });
++  assert.equal(result, true);
++  assert.equal(refreshed, 1);
++});
++
++test('refresh rotation: late 401 in another tab reuses the rotated cookie session', async () => {
++  const locks = webLockManager();
++  let authenticated = false;
++  let refreshCount = 0;
++  const refresh = () => coordinatedRefresh({
++    locks,
++    probeSession: async () => authenticated ? 'authenticated' : 'unauthenticated',
++    refresh: async () => { refreshCount += 1; authenticated = true; return true; },
++  });
++  const first = await refresh();
++  const second = await refresh(); // Represents a 401 delivered after the first tab completed rotation.
++  assert.equal(first, true);
++  assert.equal(second, true);
++  assert.equal(refreshCount, 1);
++});
++
++test('CSRF invalidation clears the old token and reacquires a new masked token', async () => {
++  let token = 'old-masked-token';
++  const events = [];
++  const ok = await reacquireCsrfToken({
++    clear: () => { events.push('clear'); token = null; },
++    get: async () => { events.push('fetch-csrf'); token = 'new-masked-token'; return token; },
++  });
++  assert.equal(ok, true);
++  assert.equal(token, 'new-masked-token');
++  const [header, value] = await csrfHeader(async () => token); // next unsafe request reads the reacquired token
++  assert.equal(header, 'X-CSRFToken');
++  assert.equal(value, 'new-masked-token');
++  assert.deepEqual(events, ['clear', 'fetch-csrf']);
++});
++
++test('logout clears local session/cache even when the server request fails', async () => {
++  const events = [];
++  await assert.rejects(completeLogout({
++    logoutRequest: async () => { events.push('request'); throw new Error('offline'); },
++    clearCsrf: () => events.push('csrf-clear'),
++    clearCache: async () => events.push('cache-clear'),
++    setSession: async (session) => events.push(session.user),
++    navigate: (path) => events.push(path),
++  }), /offline/);
++  assert.deepEqual(events, ['request', 'csrf-clear', 'cache-clear', null, '/login']);
++});
++
++test('account switching clears previous user cache before installing the next user', async () => {
++  const events = [];
++  await completeAuthentication({
++    user: { id: 22 },
++    refreshCsrf: async () => events.push('csrf'),
++    clearCache: async () => events.push('old-user-cache-cleared'),
++    setSession: async (session) => events.push(`user-${session.user.id}`),
++  });
++  assert.deepEqual(events, ['csrf', 'old-user-cache-cleared', 'user-22']);
++});
++
++test('temporary API outages do not become unauthenticated sessions', async () => {
++  for (const status of [429, 500, 502, 503]) {
++    await assert.rejects(restoreSession(async () => { throw Object.assign(new Error('temporary'), { status }); }), /temporary/);
++    assert.equal(sessionState({ user: null, hasData: false, loading: false, error: new Error('temporary') }), 'unknown');
++  }
++  await assert.rejects(restoreSession(async () => { throw new TypeError('network down'); }), /network down/);
++  assert.deepEqual(await restoreSession(async () => { throw Object.assign(new Error('expired'), { status: 401 }); }), { user: null });
++});
++
++test('simultaneous unauthorized tabs serialize refresh and refresh only once', async () => {
++  const locks = webLockManager();
++  let authenticated = false;
++  let refreshCount = 0;
++  const attempt = () => coordinatedRefresh({
++    locks,
++    probeSession: async () => authenticated ? 'authenticated' : 'unauthenticated',
++    refresh: async () => {
++      refreshCount += 1;
++      await new Promise((resolve) => setTimeout(resolve, 5));
++      authenticated = true;
++      return true;
++    },
++  });
++  const results = await Promise.all([attempt(), attempt()]);
++  assert.deepEqual(results, [true, true]);
++  assert.equal(refreshCount, 1);
++});
++
++test('transient failure during the post-401 probe does not rotate or log out', async () => {
++  let refreshCount = 0;
++  await assert.rejects(coordinatedRefresh({
++    locks: webLockManager(),
++    probeSession: async () => { throw Object.assign(new Error('gateway unavailable'), { status: 502 }); },
++    refresh: async () => { refreshCount += 1; return true; },
++  }), /gateway unavailable/);
++  assert.equal(refreshCount, 0);
++});
++
++test('a previously confirmed signed-out session stays signed out through a failed revalidation', () => {
++  assert.equal(sessionState({ user: null, hasData: true, loading: false, error: new Error('gateway') }), 'unauthenticated');
++});

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Techvoto is a learning platform with expert-led courses, live classes, assessments and verifiable certificates." />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111317" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Techvoto" />
+    <meta property="og:title" content="Techvoto | Learn in-demand tech skills" />
+    <meta property="og:description" content="Expert-led courses, live classes and verifiable certificates." />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <script>
+      // Apply the saved theme before first paint (same storage key next-themes uses), so dark mode never flashes light.
+      try { var t = localStorage.getItem('theme'); if (t === 'dark' || ((!t || t === 'system') && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark'); } catch (e) {}
+    </script>
+    <title>Techvoto | Learn in-demand tech skills</title>
+  </head>
+  <body class="min-h-screen bg-background text-foreground antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

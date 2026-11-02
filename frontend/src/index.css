@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --font-body: 'Inter Variable'; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4 { letter-spacing: -0.011em; }
+h1, h2, h3 { font-weight: 600; }
+
+/* Keyboard focus that is always visible, never on mouse click */
+:focus-visible { outline: 2px solid hsl(var(--heroui-focus)); outline-offset: 2px; }
+
+/* Subtle dotted grid used behind hero / auth panels */
+.bg-grid {
+  background-image: radial-gradient(hsl(var(--heroui-default-300) / 0.7) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Reading styles for lesson / announcement markdown */
+.prose-tv { line-height: 1.7; font-size: 0.975rem; }
+.prose-tv h1, .prose-tv h2, .prose-tv h3 { font-weight: 600; margin: 1.5em 0 0.5em; }
+.prose-tv h2 { font-size: 1.3rem; } .prose-tv h3 { font-size: 1.1rem; }
+.prose-tv p { margin: 0.8em 0; }
+.prose-tv ul { list-style: disc; padding-left: 1.4em; margin: 0.8em 0; }
+.prose-tv ol { list-style: decimal; padding-left: 1.4em; margin: 0.8em 0; }
+.prose-tv code { background: hsl(var(--heroui-default-100)); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; }
+.prose-tv pre { background: hsl(var(--heroui-default-100)); border: 1px solid hsl(var(--heroui-divider) / var(--heroui-divider-opacity, 0.15)); padding: 1em; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
+.prose-tv pre code { background: transparent; padding: 0; }
+.prose-tv blockquote { border-left: 3px solid hsl(var(--heroui-primary)); padding: 0.1em 1em; margin: 1em 0; color: hsl(var(--heroui-default-600)); }
+.prose-tv a { color: hsl(var(--heroui-primary)); text-decoration: underline; text-underline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+}

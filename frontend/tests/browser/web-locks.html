@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Techvoto Web Locks smoke test</title></head>
+<body>
+  <h1>Techvoto Web Locks smoke test</h1>
+  <pre id="result">Running…</pre>
+  <script type="module">
+    const output = document.querySelector('#result');
+    const lockName = `techvoto-smoke-${Date.now()}`;
+    const events = [];
+    let active = 0;
+    let failed = false;
+    const timeout = setTimeout(() => finish('FAIL: timed out waiting for both lock clients'), 5000);
+    function finish(message) {
+      clearTimeout(timeout);
+      output.textContent = `${message}\nEvents: ${events.join(' → ')}`;
+      document.documentElement.dataset.result = message.startsWith('PASS') ? 'pass' : 'fail';
+    }
+    if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+      finish('FAIL: Web Locks API unavailable (requires HTTPS or localhost)');
+    } else {
+      window.addEventListener('message', (event) => {
+        if (event.origin !== location.origin) return;
+        const { type, id } = event.data || {};
+        if (type === 'ready') event.source.postMessage({ type: 'run', lockName }, location.origin);
+        if (type === 'entered') {
+          active += 1;
+          events.push(`enter${id}`);
+          if (active !== 1) failed = true;
+        }
+        if (type === 'left') {
+          events.push(`leave${id}`);
+          active -= 1;
+          if (events.filter((x) => x.startsWith('enter')).length === 2 && active === 0) {
+            finish(failed ? 'FAIL: overlapping lock holders observed' : 'PASS: same-origin contexts serialized by Web Locks');
+          }
+        }
+        if (type === 'error') finish(`FAIL: ${event.data.message || 'lock request failed'}`);
+      });
+    const frames = [0, 1].map((id) => {
+      const frame = document.createElement('iframe');
+      frame.hidden = true;
+      frame.src = `/tests/browser/web-locks-worker.html?id=${id}&lock=${encodeURIComponent(lockName)}`;
+      document.body.append(frame);
+      return frame;
+    });
+    }
+  </script>
+</body>
+</html>

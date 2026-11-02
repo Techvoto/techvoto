@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Allow: /courses
+Disallow: /dashboard
+Disallow: /my-learning
+Disallow: /learn/
+Disallow: /admin
+Disallow: /instructor
+Disallow: /billing
+Disallow: /profile
+Disallow: /checkout
