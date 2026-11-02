@@ -20,7 +20,9 @@ export default function CheckoutVerify() {
 
   useEffect(() => {
     if (!reference) { setState('failed'); return; }
+    const paymentReference = reference;
     let tries = 0, stop = false;
+    
     let timer: ReturnType<typeof setTimeout> | undefined;
     setState('checking');
 
@@ -29,7 +31,7 @@ export default function CheckoutVerify() {
       let courseSlug = '';
       try {
         const result = await api<{ status: string; course_slug?: string }>(
-          `payments/verify/${encodeURIComponent(reference)}/`,
+          `payments/verify/${encodeURIComponent(paymentReference)}/`,
         );
         status = result.status;
         courseSlug = result.course_slug ?? '';

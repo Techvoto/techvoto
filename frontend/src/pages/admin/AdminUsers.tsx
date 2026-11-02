@@ -26,8 +26,10 @@ export default function AdminUsers() {
   const qs = new URLSearchParams({ page: String(page) });
   if (q) qs.set('search', q);
   if (role) qs.set('role', role);
-  const swr = useSWR<Paged<User>>(`auth/admin/users/?${qs}`, undefined, { keepPreviousData: true });
-
+  const swr = useSWR<Paged<User>>(
+  `auth/admin/users/?${qs}`,
+  { keepPreviousData: true },
+);
   async function patch(u: User, body: Partial<Pick<User, 'role' | 'is_active'>>) {
     try { await api(`auth/admin/users/${u.id}/`, { method: 'PATCH', body }); toast.success('User updated'); void swr.mutate(); }
     catch (e) { toast.error('Could not update user', errorMessage(e)); }

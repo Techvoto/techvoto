@@ -56,6 +56,7 @@ function SessionRecovery({ onRetry, message = 'We could not verify your session.
 /** Login / register / reset: split-screen, signed-in visitors are sent to their dashboard. */
 export function AuthLayout() {
   const { user, status, retrySession, sessionError } = useAuth();
+  
   if (status === 'authenticated' && user) return <Navigate to="/dashboard" replace />;
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
@@ -93,7 +94,7 @@ export function AppLayout() {
   const { user, status, retrySession, sessionError } = useAuth();
   const { pathname, search } = useLocation();
   if (status === 'loading') return <div className="mx-auto max-w-page p-6"><PageSkeleton /></div>;
-  if (status === 'unknown') return <div className="mx-auto max-w-page p-6"><SessionRecovery onRetry={() => { void retrySession(); }} /></div>;
+  if (status === 'unknown') return <div className="mx-auto max-w-page p-6"><SessionRecovery message={sessionError instanceof Error ? sessionError.message : undefined} onRetry={() => { void retrySession(); }} /></div>;
   if (status === 'unauthenticated' || !user) return <Navigate to={`/login?next=${encodeURIComponent(pathname + search)}`} replace />;
   return (
     <AppShell>

@@ -35,7 +35,10 @@ export default function GlobalSearch() {
   }, []);
   useEffect(() => { const t = setTimeout(() => setQ(text.trim()), 250); return () => clearTimeout(t); }, [text]);
 
-  const { data, isLoading } = useSWR<SearchResults>(q.length >= 2 ? `search/?q=${encodeURIComponent(q)}` : null, undefined, { keepPreviousData: true });
+  const { data, isLoading } = useSWR<SearchResults>(
+  q.length >= 2 ? `search/?q=${encodeURIComponent(q)}` : null,
+  { keepPreviousData: true },
+);
   const go = (href: string) => { setOpen(false); setText(''); navigate(href); };
   const empty = data && !data.courses.length && !data.instructors.length && !data.lessons.length;
 
