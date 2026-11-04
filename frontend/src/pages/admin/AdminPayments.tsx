@@ -18,10 +18,7 @@ export default function AdminPayments() {
   useTitle('Payments');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
-  const swr = useSWR<Paged<Payment>>(
-  `payments/all/?page=${page}${status ? `&status=${status}` : ''}`,
-  { keepPreviousData: true },
-);
+  const swr = useSWR<Paged<Payment>>(`payments/all/?page=${page}${status ? `&status=${status}` : ''}`, { keepPreviousData: true });
   async function refund(p: Payment) {
     if (!window.confirm(`Refund ${naira(p.amount_kobo)} to ${p.user_email}? Their access to the course will be removed.`)) return;
     try { await api(`payments/${p.id}/refund/`, { method: 'POST' }); toast.success('Refund submitted to Paystack'); void swr.mutate(); }

@@ -66,7 +66,7 @@ export default function Player() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link to={`/courses/${slug}`} className="text-sm font-medium text-primary hover:underline">← Course overview</Link>
-          <h1 className="text-2xl font-semibold">{c.title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{c.title}</h1>
         </div>
         <div className="w-full sm:w-64"><Progress aria-label="Course progress" value={pct} showValueLabel label="Progress" size="sm" /></div>
       </div>
@@ -91,7 +91,7 @@ export default function Player() {
           )}
         </div>
 
-        <Card shadow="sm" className="h-fit lg:sticky lg:top-20" as="aside" aria-label="Course content"><CardBody className="max-h-[70vh] space-y-4 overflow-y-auto">
+        <Card shadow="sm" className="h-fit border border-divider lg:sticky lg:top-24" as="aside" aria-label="Course content"><CardBody className="max-h-[70vh] space-y-4 overflow-y-auto">
           {c.sections.map((s) => (
             <div key={s.id}>
               <p className="mb-1.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-default-500">{s.title}</p>

@@ -27,18 +27,18 @@ export default function ForgotPasswordPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Reset your password</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
       {done ? (
         <p className="mt-4 text-sm text-default-600">If an account exists for <strong>{email}</strong>, we have sent a reset link. Check your inbox.</p>
       ) : (
-        <form onSubmit={submit} className="mt-4 space-y-4">
+        <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
           <p className="text-sm text-default-500">Enter your email and we will send you a link.</p>
           <Input variant="bordered" labelPlacement="outside" placeholder=" " type="email" label="Email" value={email} onValueChange={setEmail} isRequired />
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          <Button type="submit" color="primary" fullWidth isLoading={busy}>Send reset link</Button>
+          <Button type="submit" color="primary" size="lg" className="font-semibold" fullWidth isLoading={busy}>Send reset link</Button>
         </form>
       )}
-      <p className="mt-5 text-center text-sm"><Link to="/login" className="text-primary">Back to log in</Link></p>
+      <p className="mt-5 text-center text-sm"><Link to="/login" className="font-medium text-primary hover:underline">Back to log in</Link></p>
     </div>
   );
 }

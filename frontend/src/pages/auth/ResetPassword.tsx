@@ -23,14 +23,14 @@ export default function ResetPasswordPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Choose a new password</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Choose a new password</h1>
       {done ? (
-        <p className="mt-4 text-sm">Your password has been reset. <Link to="/login" className="text-primary">Log in</Link></p>
+        <p className="mt-4 text-sm">Your password has been reset. <Link to="/login" className="font-medium text-primary hover:underline">Log in</Link></p>
       ) : (
-        <form onSubmit={submit} className="mt-4 space-y-4">
+        <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
           <Input variant="bordered" labelPlacement="outside" placeholder=" " type="password" label="New password" value={pw} onValueChange={setPw} isRequired autoComplete="new-password" />
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-          <Button type="submit" color="primary" fullWidth isLoading={busy}>Set new password</Button>
+          <Button type="submit" color="primary" size="lg" className="font-semibold" fullWidth isLoading={busy}>Set new password</Button>
         </form>
       )}
     </div>

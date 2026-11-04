@@ -45,17 +45,22 @@ function NavLinks({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: () 
   const all = groups.flatMap(([, items]) => items.map(([, href]) => href));
   const best = all.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
   return (
-    <nav className="flex flex-col gap-5" aria-label="Primary">
+    <nav className="flex flex-col gap-6" aria-label="Primary">
       {groups.map(([title, items], gi) => (
         <div key={title || gi}>
-          {title && <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-default-500">{title}</p>}
-          <ul className="space-y-0.5">
+          {title && <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-default-500">{title}</p>}
+          <ul className="space-y-1">
             {items.map(([label, href, Icon]) => {
               const active = href === best;
               return (
                 <li key={href}>
-                  <Link to={href} onClick={onNavigate} aria-current={active ? 'page' : undefined}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-default-700 hover:bg-default-100'}`}>
+                  <Link
+                    to={href}
+                    onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
+                    className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-default-600 hover:bg-default-100 hover:text-foreground'}`}
+                  >
+                    {active && <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary" aria-hidden="true" />}
                     <Icon size={18} strokeWidth={active ? 2.25 : 1.75} />{label}
                   </Link>
                 </li>
@@ -78,7 +83,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <header className="no-print sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-divider bg-content1/95 px-3 backdrop-blur sm:px-5">
+      <header className="no-print sticky top-0 z-40 flex h-16 items-center gap-3 border-b border-divider bg-background/80 px-3 backdrop-blur-xl sm:px-5">
         <Button isIconOnly variant="light" aria-label="Open menu" onPress={drawer.onOpen} className="lg:hidden"><Menu size={20} /></Button>
         <Logo href="/dashboard" />
         <div className="ml-auto flex items-center gap-1">
@@ -90,7 +95,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </Badge>
           <Dropdown placement="bottom-end">
             <DropdownTrigger>
-              <Avatar as="button" size="sm" isBordered className="ml-2 cursor-pointer" name={user.full_name} src={user.avatar || undefined} aria-label="Account menu" />
+              <Avatar as="button" size="sm" isBordered color="primary" className="ml-2 cursor-pointer" name={user.full_name} src={user.avatar || undefined} aria-label="Account menu" />
             </DropdownTrigger>
             <DropdownMenu aria-label="Account">
               <DropdownItem key="who" isReadOnly className="opacity-100" textValue="account">
@@ -106,12 +111,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <div className="flex">
-        <aside className="no-print sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-divider bg-content1 p-3 lg:flex">
+        <aside className="no-print scroll-thin sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-divider bg-content1 p-4 lg:flex">
           <NavLinks groups={groups} />
-          <div className="mt-auto border-t border-divider pt-4"><NavLinks groups={ACCOUNT} /></div>
+          <div className="mt-auto space-y-4 border-t border-divider pt-4">
+            <NavLinks groups={ACCOUNT} />
+            <div className="flex items-center gap-3 rounded-xl bg-default-100 p-3">
+              <Avatar size="sm" name={user.full_name} src={user.avatar || undefined} />
+              <div className="min-w-0 grow">
+                <p className="truncate text-sm font-semibold">{user.full_name}</p>
+                <p className="text-xs capitalize text-default-500">{user.role}</p>
+              </div>
+              <Button isIconOnly size="sm" variant="light" aria-label="Sign out" onPress={() => { void logout(); }}><LogOut size={16} /></Button>
+            </div>
+          </div>
         </aside>
         <main id="main" className="min-w-0 grow">
-          <div className="mx-auto w-full max-w-page p-4 sm:p-8"><VerifyBanner />{children}</div>
+          <div className="mx-auto w-full max-w-page p-4 sm:p-8 lg:p-10"><VerifyBanner />{children}</div>
         </main>
       </div>
 

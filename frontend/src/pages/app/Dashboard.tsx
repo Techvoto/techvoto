@@ -1,4 +1,4 @@
-import { Button, Card, CardBody, Progress } from '@heroui/react';
+import { Button, Progress } from '@heroui/react';
 import { Award, BookOpen, Flame, Trophy } from 'lucide-react';
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -6,7 +6,6 @@ import useSWR from 'swr';
 import CourseCard from '@/components/CourseCard';
 import DataState, { EmptyState } from '@/components/DataState';
 import LiveCard from '@/components/LiveCard';
-import PageHeader from '@/components/PageHeader';
 import { CardGridSkeleton, ListSkeleton, StatsSkeleton } from '@/components/Skeletons';
 import StatCard from '@/components/StatCard';
 import { useAuth } from '@/context/auth';
@@ -30,7 +29,11 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title={`Welcome back, ${user.first_name}`} subtitle="Here is where you stand today." />
+      <div className="surface-brand mb-8 rounded-3xl px-7 py-8 sm:px-10 sm:py-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Your learning space</p>
+        <h1 className="display mt-2 text-3xl sm:text-4xl">Welcome back, {user.first_name}.</h1>
+        <p className="mt-2 text-sm text-white/75">Pick up where you left off and keep your streak going.</p>
+      </div>
       <DataState swr={enr} skeleton={<><StatsSkeleton /><div className="mt-8"><CardGridSkeleton count={3} /></div></>}>
         {(d) => {
           const all = list(d);
@@ -38,25 +41,25 @@ export default function Dashboard() {
           return (
             <div className="space-y-10">
               {active[0] && (
-                <Card shadow="sm"><CardBody className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
+                <div className="panel flex flex-col gap-5 p-6 sm:flex-row sm:items-center">
                   <div className="min-w-0 grow">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-primary">Pick up where you left off</p>
-                    <h2 className="mt-1 truncate text-xl font-semibold">{active[0].course.title}</h2>
+                    <p className="eyebrow">Continue learning</p>
+                    <h2 className="mt-1.5 truncate text-xl font-semibold">{active[0].course.title}</h2>
                     <Progress size="sm" value={active[0].progress_pct} aria-label="Course progress" showValueLabel className="mt-4 max-w-md" />
                   </div>
-                  <Button as={Link} to={`/learn/${active[0].course.slug}`} color="primary" size="lg" className="shrink-0 font-medium">Resume learning</Button>
-                </CardBody></Card>
+                  <Button as={Link} to={`/learn/${active[0].course.slug}`} color="primary" size="lg" className="shrink-0 font-semibold">Resume learning</Button>
+                </div>
               )}
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard label="Total XP" value={user.xp} icon={Trophy} />
-                <StatCard label="Day streak" value={user.streak} icon={Flame} hint="Complete a lesson daily" />
+                <StatCard label="Total XP" value={user.xp} icon={Trophy} tone="warning" />
+                <StatCard label="Day streak" value={user.streak} icon={Flame} hint="Complete a lesson daily" tone="danger" />
                 <StatCard label="In progress" value={active.length} icon={BookOpen} />
-                <StatCard label="Certificates" value={certs.data ? list(certs.data).length : '–'} icon={Award} />
+                <StatCard label="Certificates" value={certs.data ? list(certs.data).length : '–'} icon={Award} tone="success" />
               </div>
 
               <section>
-                <div className="mb-4 flex items-end justify-between"><h2 className="text-lg font-semibold">My courses</h2><Link to="/my-learning" className="text-sm font-medium text-primary hover:underline">View all</Link></div>
+                <div className="mb-4 flex items-end justify-between gap-3"><h2 className="text-lg font-semibold tracking-tight">My courses</h2><Link to="/my-learning" className="text-sm font-semibold text-primary hover:underline">View all</Link></div>
                 {active.length === 0 ? (
                   <EmptyState title="No courses in progress" text="Find a course to start your learning journey." action={<Button as={Link} to="/courses" color="primary">Browse courses</Button>} />
                 ) : (
@@ -67,7 +70,7 @@ export default function Dashboard() {
               </section>
 
               <section>
-                <div className="mb-4 flex items-end justify-between"><h2 className="text-lg font-semibold">Upcoming live classes</h2><Link to="/live" className="text-sm font-medium text-primary hover:underline">View all</Link></div>
+                <div className="mb-4 flex items-end justify-between gap-3"><h2 className="text-lg font-semibold tracking-tight">Upcoming live classes</h2><Link to="/live" className="text-sm font-semibold text-primary hover:underline">View all</Link></div>
                 <DataState swr={live} skeleton={<ListSkeleton rows={2} />} isEmpty={(x) => list(x).length === 0}
                   empty={<p className="text-sm text-default-500">No live classes scheduled right now.</p>}>
                   {(x) => <div className="space-y-3">{list(x).slice(0, 3).map((l) => <LiveCard key={l.id} live={l} />)}</div>}

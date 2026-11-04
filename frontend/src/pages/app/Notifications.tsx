@@ -29,8 +29,8 @@ export default function Notifications() {
         {(d) => (
           <div className="space-y-2">
             {list(d).map((n) => (
-              <Card key={n.id} isPressable onPress={() => { void open(n); }} shadow="sm" className="w-full text-left">
-                <CardBody className="flex flex-row items-start gap-3">
+              <Card key={n.id} isPressable onPress={() => { void open(n); }} shadow="sm" className={`w-full border text-left ${n.is_read ? 'border-divider' : 'border-primary/30 bg-primary/5'}`}>
+                <CardBody className="flex flex-row items-start gap-3 p-4">
                   <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${n.is_read ? 'bg-default-300' : 'bg-primary'}`} />
                   <div className="grow"><p className={n.is_read ? '' : 'font-semibold'}>{n.title}</p>{n.body && <p className="text-sm text-default-500">{n.body}</p>}</div>
                   <span className="shrink-0 text-xs text-default-400">{timeAgo(n.created_at)}</span>

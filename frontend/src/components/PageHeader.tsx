@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react';
 
-interface Props { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }
+interface Props { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; eyebrow?: string }
 
-export default function PageHeader({ title, subtitle, actions }: Props) {
+export default function PageHeader({ title, subtitle, actions, eyebrow }: Props) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-divider pb-6">
+    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold sm:text-[1.75rem]">{title}</h1>
-        {subtitle && <p className="mt-1 text-default-500">{subtitle}</p>}
+        {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+        {subtitle && <div className="mt-1.5 text-default-500">{subtitle}</div>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>

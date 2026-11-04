@@ -2,7 +2,7 @@ import {
   Accordion, AccordionItem, Avatar, Button, Card, CardBody, Chip, Modal, ModalBody, ModalContent, ModalHeader,
   Select, SelectItem, Textarea,
 } from '@heroui/react';
-import { Clock, Download, FileText, PlayCircle, Star, Users, type LucideIcon } from 'lucide-react';
+import { Check, Clock, Download, FileText, PlayCircle, Star, Users, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import useSWR from 'swr';
@@ -54,10 +54,10 @@ function Reviews({ slug, canReview }: { slug: string; canReview: boolean }) {
   }
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-xl font-semibold">Learner reviews</h2>
+    <section className="max-w-3xl space-y-4">
+      <h2 className="text-2xl font-semibold tracking-tight">Learner reviews</h2>
       {canReview && (
-        <Card shadow="sm"><CardBody className="space-y-3">
+        <Card shadow="sm" className="border border-divider"><CardBody className="space-y-3 p-5">
           <Select aria-label="Rating" label="Your rating" selectedKeys={[rating]} disallowEmptySelection onSelectionChange={(k) => setRating(firstKey(k))} className="max-w-xs">
             {[5, 4, 3, 2, 1].map((n) => <SelectItem key={String(n)}>{'★'.repeat(n)} {n}/5</SelectItem>)}
           </Select>
@@ -68,7 +68,7 @@ function Reviews({ slug, canReview }: { slug: string; canReview: boolean }) {
       <DataState swr={swr} skeleton={<ListSkeleton rows={2} />} isEmpty={(d) => list(d).length === 0}
         empty={<p className="text-sm text-default-500">No reviews yet.</p>}>
         {(d) => <>{list(d).map((r) => (
-          <Card key={r.id} shadow="sm"><CardBody>
+          <Card key={r.id} shadow="sm" className="border border-divider"><CardBody className="p-5">
             <div className="flex items-center justify-between">
               <p className="font-semibold">{r.user_name}</p>
               <span className="flex text-warning">{Array.from({ length: r.rating }).map((_, i) => <Star key={i} size={14} className="fill-warning" />)}</span>
@@ -110,53 +110,61 @@ export default function CourseDetailPage() {
       {(c) => {
         const isOwner = !!c.can_manage;
         return (
-          <div className="space-y-10">
-            <div className="-mx-6 -mt-10 border-b border-divider bg-content1 px-6 py-10">
-              <div className="mx-auto grid max-w-page gap-8 lg:grid-cols-[1fr_360px]">
-                <div className="space-y-4">
+          <div className="space-y-12">
+            <div className="band glow -mt-10 pb-12 pt-12 sm:-mt-12 sm:pt-14">
+              <div className="grid gap-10 lg:grid-cols-[1fr_380px] lg:items-start">
+                <div className="space-y-5">
                   <div className="flex flex-wrap gap-2">
                     {c.category && <Chip color="primary" variant="flat" radius="sm">{c.category.name}</Chip>}
                     <Chip variant="flat" radius="sm" className="capitalize">{c.level}</Chip>
-                    {c.status !== 'published' && <Chip color="warning" variant="flat" className="capitalize">{c.status}</Chip>}
+                    {c.status !== 'published' && <Chip color="warning" variant="flat" radius="sm" className="capitalize">{c.status}</Chip>}
                   </div>
-                  <h1 className="text-3xl font-semibold sm:text-4xl">{c.title}</h1>
-                  {c.subtitle && <p className="text-lg text-default-600">{c.subtitle}</p>}
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-default-500">
-                    {c.avg_rating && <span className="flex items-center gap-1"><Star size={15} className="fill-warning text-warning" />{c.avg_rating}</span>}
-                    <span className="flex items-center gap-1"><Users size={15} />{c.student_count} students</span>
-                    <span className="flex items-center gap-1"><Clock size={15} />{c.lesson_count} lessons</span>
+                  <h1 className="display text-4xl sm:text-5xl">{c.title}</h1>
+                  {c.subtitle && <p className="max-w-2xl text-lg leading-8 text-default-600">{c.subtitle}</p>}
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-default-600">
+                    {c.avg_rating && <span className="flex items-center gap-1.5 font-semibold text-foreground"><Star size={15} className="fill-warning text-warning" />{c.avg_rating}</span>}
+                    <span className="flex items-center gap-1.5"><Users size={15} />{c.student_count} students</span>
+                    <span className="flex items-center gap-1.5"><Clock size={15} />{c.lesson_count} lessons</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Avatar name={c.instructor?.full_name} src={c.instructor?.avatar || undefined} size="sm" />
-                    <div><p className="text-sm font-semibold">{c.instructor?.full_name}</p>{c.instructor?.bio && <p className="line-clamp-1 text-xs text-default-500">{c.instructor.bio}</p>}</div>
+                  <div className="flex items-center gap-3 pt-1">
+                    <Avatar name={c.instructor?.full_name} src={c.instructor?.avatar || undefined} />
+                    <div>
+                      <p className="text-xs text-default-500">Taught by</p>
+                      <p className="text-sm font-semibold">{c.instructor?.full_name}</p>
+                    </div>
                   </div>
+                  {c.instructor?.bio && <p className="max-w-2xl text-sm leading-6 text-default-500">{c.instructor.bio}</p>}
                 </div>
-                <Card shadow="md" className="h-fit overflow-hidden">
-                  <Thumb course={c} className="h-48" />
-                  <CardBody className="space-y-4 p-5">
-                    <p className="text-3xl font-semibold">{naira(c.price_kobo)}</p>
+                <div className="panel overflow-hidden shadow-large lg:sticky lg:top-24">
+                  <div className="overflow-hidden"><Thumb course={c} /></div>
+                  <div className="space-y-4 p-6">
+                    <p className={`text-3xl font-semibold tracking-tight ${c.is_free ? 'text-success' : ''}`}>{naira(c.price_kobo)}</p>
                     {c.is_enrolled ? (
-                      <Button as={Link} to={`/learn/${slug}`} color="primary" size="lg">{isOwner ? 'Open course' : c.progress_pct ? `Continue (${c.progress_pct}%)` : 'Start learning'}</Button>
+                      <Button as={Link} to={`/learn/${slug}`} color="primary" size="lg" className="w-full font-semibold">{isOwner ? 'Open course' : c.progress_pct ? `Continue (${c.progress_pct}%)` : 'Start learning'}</Button>
                     ) : (
-                      <Button color="primary" size="lg" onPress={() => { void enroll(c); }} isLoading={busy} isDisabled={c.status !== 'published'}>
+                      <Button color="primary" size="lg" className="w-full font-semibold" onPress={() => { void enroll(c); }} isLoading={busy} isDisabled={c.status !== 'published'}>
                         {c.is_free ? 'Enroll for free' : 'Buy this course'}
                       </Button>
                     )}
-                    {isOwner && <Button as={Link} to={`/instructor/courses/${slug}`} variant="flat">Manage course</Button>}
-                    <p className="text-center text-xs text-default-500">Lifetime access · Certificate of completion</p>
-                  </CardBody>
-                </Card>
+                    {isOwner && <Button as={Link} to={`/instructor/courses/${slug}`} variant="flat" className="w-full">Manage course</Button>}
+                    <ul className="space-y-2 border-t border-divider pt-4 text-sm text-default-600">
+                      <li className="flex items-center gap-2"><Check size={15} className="text-success" />Lifetime access</li>
+                      <li className="flex items-center gap-2"><Check size={15} className="text-success" />Certificate of completion</li>
+                      <li className="flex items-center gap-2"><Check size={15} className="text-success" />{c.lesson_count} lessons</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <section className="space-y-3">
-              <h2 className="text-xl font-semibold">About this course</h2>
+            <section className="max-w-3xl space-y-4">
+              <h2 className="text-2xl font-semibold tracking-tight">About this course</h2>
               <Markdown>{c.description}</Markdown>
             </section>
 
-            <section className="space-y-3">
-              <h2 className="text-xl font-semibold">Course content</h2>
-              <Accordion selectionMode="multiple" variant="bordered" className="bg-content1" defaultExpandedKeys={['0']}>
+            <section className="max-w-3xl space-y-4">
+              <h2 className="text-2xl font-semibold tracking-tight">Course content</h2>
+              <Accordion selectionMode="multiple" variant="bordered" className="bg-content1 shadow-small" defaultExpandedKeys={['0']}>
                 {c.sections.map((s, i) => (
                   <AccordionItem key={String(i)} title={<span className="font-semibold">{s.title}</span>} subtitle={`${s.lessons.length} lessons`}>
                     <ul className="divide-y divide-divider">

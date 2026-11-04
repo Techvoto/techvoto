@@ -36,9 +36,10 @@ export default function Profile() {
   return (
     <div className="max-w-2xl space-y-6">
       <PageHeader title="Profile" subtitle={user?.email} />
-      <Card shadow="sm"><CardBody className="space-y-4">
+      <Card shadow="sm" className="border border-divider"><CardBody className="space-y-5 p-6">
+        <h2 className="text-lg font-semibold tracking-tight">Personal details</h2>
         <div className="flex items-center gap-4">
-          <Avatar size="lg" name={user?.full_name} src={user?.avatar || undefined} />
+          <Avatar size="lg" isBordered color="primary" name={user?.full_name} src={user?.avatar || undefined} />
           <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { void upload(e); }} />
           <Button variant="flat" onPress={() => file.current?.click()} isLoading={busy === 'avatar'}>Change photo</Button>
         </div>
@@ -49,8 +50,8 @@ export default function Profile() {
         <Textarea label="Bio" value={f.bio} onValueChange={(v) => setF({ ...f, bio: v })} />
         <Button color="primary" className="w-fit" onPress={save} isLoading={busy === 'profile'}>Save changes</Button>
       </CardBody></Card>
-      <Card shadow="sm"><CardBody className="space-y-4">
-        <h2 className="text-lg font-semibold">Change password</h2>
+      <Card shadow="sm" className="border border-divider"><CardBody className="space-y-5 p-6">
+        <h2 className="text-lg font-semibold tracking-tight">Change password</h2>
         <Input type="password" label="Current password" value={pw.old_password} onValueChange={(v) => setPw({ ...pw, old_password: v })} autoComplete="current-password" />
         <Input type="password" label="New password" value={pw.new_password} onValueChange={(v) => setPw({ ...pw, new_password: v })} autoComplete="new-password" />
         <Button variant="flat" className="w-fit" onPress={changePassword} isLoading={busy === 'pw'} isDisabled={!pw.old_password || !pw.new_password}>Update password</Button>

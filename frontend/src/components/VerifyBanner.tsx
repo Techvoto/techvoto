@@ -18,9 +18,9 @@ export default function VerifyBanner() {
   }
 
   return (
-    <div role="status" className="no-print mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-warning-300 bg-warning-50 p-4 text-warning-900 dark:bg-warning/10 dark:text-warning-600">
-      <MailWarning className="shrink-0" size={20} />
-      <p className="grow text-sm"><strong>Verify your email to enroll in courses.</strong> We sent a link to {user.email}.</p>
+    <div role="status" className="no-print mb-6 flex flex-wrap items-center gap-3 rounded-large border border-warning/40 bg-warning/10 p-4">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-warning/20 text-warning-700 dark:text-warning"><MailWarning size={18} /></span>
+      <p className="grow text-sm"><strong className="font-semibold">Verify your email to enroll in courses.</strong> We sent a link to {user.email}.</p>
       <Button size="sm" color="warning" variant="flat" onPress={resend} isLoading={busy} isDisabled={sent}>{sent ? 'Sent' : 'Resend email'}</Button>
     </div>
   );

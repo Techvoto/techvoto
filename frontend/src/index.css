@@ -2,43 +2,109 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { --font-body: 'Inter Variable'; }
+/* ------------------------------------------------------------------ base */
+:root { --font-body: 'Inter Variable'; color-scheme: light; }
+.dark { color-scheme: dark; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body {
-  font-family: var(--font-body), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
 }
-h1, h2, h3, h4 { letter-spacing: -0.011em; }
-h1, h2, h3 { font-weight: 600; }
+h1, h2, h3, h4 { letter-spacing: -0.02em; text-wrap: balance; }
+h1, h2, h3 { font-weight: 650; }
+::selection { background: hsl(var(--heroui-primary) / 0.22); }
 
 /* Keyboard focus that is always visible, never on mouse click */
 :focus-visible { outline: 2px solid hsl(var(--heroui-focus)); outline-offset: 2px; }
 
-/* Subtle dotted grid used behind hero / auth panels */
-.bg-grid {
-  background-image: radial-gradient(hsl(var(--heroui-default-300) / 0.7) 1px, transparent 1px);
-  background-size: 22px 22px;
-}
+/* HeroUI fields draw their own focus ring on the wrapper. An outline on the inner <input>
+   shows up as a second, inner border, so remove it there. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[data-slot="input"]:focus-visible { outline: none; }
 
-/* Reading styles for lesson / announcement markdown */
-.prose-tv { line-height: 1.7; font-size: 0.975rem; }
-.prose-tv h1, .prose-tv h2, .prose-tv h3 { font-weight: 600; margin: 1.5em 0 0.5em; }
+/* Slim, unobtrusive scrollbars for sidebars and panels */
+.scroll-thin { scrollbar-width: thin; scrollbar-color: hsl(var(--heroui-default-300)) transparent; }
+
+/* ------------------------------------------------------------ primitives */
+/* Small uppercase label that introduces a section. */
+.eyebrow {
+  font-size: 0.75rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  color: hsl(var(--heroui-primary));
+}
+/* Display headline: Inter at heavier weight with tight tracking. */
+.display { font-weight: 700; letter-spacing: -0.035em; line-height: 1.05; text-wrap: balance; }
+
+/* Soft brand glow used behind hero and page banners (works in light and dark). */
+.glow {
+  background:
+    radial-gradient(60% 55% at 85% 0%, hsl(var(--heroui-primary) / 0.16), transparent 70%),
+    radial-gradient(45% 45% at 0% 100%, hsl(var(--heroui-primary) / 0.08), transparent 70%);
+}
+/* Dotted grid that fades out toward the bottom. */
+.bg-grid {
+  background-image: radial-gradient(hsl(var(--heroui-default-400) / 0.35) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, #000 30%, transparent 95%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 95%);
+}
+/* Deep brand surface for banners, the auth panel and call-to-action blocks. */
+.surface-brand {
+  position: relative; overflow: hidden; isolation: isolate; color: #fff;
+  background:
+    radial-gradient(70% 90% at 100% 0%, rgba(129, 140, 248, 0.45), transparent 60%),
+    radial-gradient(60% 80% at 0% 100%, rgba(99, 102, 241, 0.25), transparent 60%),
+    linear-gradient(135deg, #1e1b4b 0%, #2b2a7a 55%, #3730a3 100%);
+}
+.surface-brand::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; opacity: 0.5; pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(115deg, transparent 20%, #000 100%);
+  -webkit-mask-image: linear-gradient(115deg, transparent 20%, #000 100%);
+}
+/* Full-width background band for a section that lives inside a centred container. */
+.band { position: relative; isolation: isolate; }
+.band::before {
+  content: ''; position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%);
+  background: hsl(var(--heroui-content1)); border-bottom: 1px solid hsl(var(--heroui-divider) / var(--heroui-divider-opacity, 0.09));
+}
+/* Surface with a hairline border, the standard container for page sections. */
+.panel {
+  background: hsl(var(--heroui-content1)); border: 1px solid hsl(var(--heroui-divider) / var(--heroui-divider-opacity, 0.09));
+  border-radius: var(--heroui-radius-large, 14px); box-shadow: var(--heroui-box-shadow-small);
+}
+.lift { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+.lift:hover { transform: translateY(-3px); box-shadow: var(--heroui-box-shadow-large); }
+
+/* ------------------------------------------------------ markdown content */
+.prose-tv { line-height: 1.75; font-size: 0.975rem; color: hsl(var(--heroui-default-700)); }
+.prose-tv > :first-child { margin-top: 0; }
+.prose-tv h1, .prose-tv h2, .prose-tv h3 { font-weight: 650; margin: 1.6em 0 0.5em; color: hsl(var(--heroui-foreground)); }
 .prose-tv h2 { font-size: 1.3rem; } .prose-tv h3 { font-size: 1.1rem; }
-.prose-tv p { margin: 0.8em 0; }
+.prose-tv p { margin: 0.85em 0; }
 .prose-tv ul { list-style: disc; padding-left: 1.4em; margin: 0.8em 0; }
 .prose-tv ol { list-style: decimal; padding-left: 1.4em; margin: 0.8em 0; }
-.prose-tv code { background: hsl(var(--heroui-default-100)); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; }
-.prose-tv pre { background: hsl(var(--heroui-default-100)); border: 1px solid hsl(var(--heroui-divider) / var(--heroui-divider-opacity, 0.15)); padding: 1em; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
+.prose-tv li { margin: 0.25em 0; }
+.prose-tv code { background: hsl(var(--heroui-default-100)); padding: 0.12em 0.4em; border-radius: 6px; font-size: 0.88em; }
+.prose-tv pre { background: hsl(var(--heroui-default-100)); border: 1px solid hsl(var(--heroui-divider) / var(--heroui-divider-opacity, 0.09)); padding: 1em; border-radius: 10px; overflow-x: auto; margin: 1em 0; }
 .prose-tv pre code { background: transparent; padding: 0; }
 .prose-tv blockquote { border-left: 3px solid hsl(var(--heroui-primary)); padding: 0.1em 1em; margin: 1em 0; color: hsl(var(--heroui-default-600)); }
 .prose-tv a { color: hsl(var(--heroui-primary)); text-decoration: underline; text-underline-offset: 2px; }
+.prose-tv img { max-width: 100%; border-radius: 10px; }
 
+/* ----------------------------------------------------------- preferences */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .lift:hover { transform: none; }
 }
 @media print {
   .no-print { display: none !important; }
   body { background: #fff !important; }
+  .band::before { display: none; }
 }

@@ -2,7 +2,7 @@ import { Card, CardBody, Skeleton } from '@heroui/react';
 
 export function CourseCardSkeleton() {
   return (
-    <Card className="w-full space-y-4 p-0" radius="lg" shadow="sm">
+    <Card className="w-full space-y-4 border border-divider p-0" radius="lg" shadow="sm">
       <Skeleton className="rounded-none"><div className="aspect-video" /></Skeleton>
       <CardBody className="space-y-3">
         <Skeleton className="w-1/3 rounded-lg"><div className="h-3" /></Skeleton>

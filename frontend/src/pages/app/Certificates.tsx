@@ -1,4 +1,4 @@
-import { Button, Card, CardBody } from '@heroui/react';
+import { Button } from '@heroui/react';
 import { Award, Copy, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import useSWR from 'swr';
@@ -26,16 +26,21 @@ export default function Certificates() {
         {(d) => (
           <div className="grid gap-4 sm:grid-cols-2">
             {list(d).map((c) => (
-              <Card key={c.id} shadow="sm"><CardBody className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-12 w-12 place-items-center rounded-lg bg-warning/15 text-warning"><Award /></div>
-                  <div><p className="text-lg font-semibold">{c.course_title}</p><p className="text-sm text-default-500">Issued {dateOnly(c.issued_at)}</p></div>
+              <div key={c.id} className="panel relative overflow-hidden p-6">
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-indigo-400" aria-hidden="true" />
+                <div className="flex items-start gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-warning/15 text-warning-700 dark:text-warning"><Award size={22} /></div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-default-500">Certificate of completion</p>
+                    <p className="mt-1 text-lg font-semibold leading-snug">{c.course_title}</p>
+                    <p className="mt-1 text-sm text-default-500">Issued {dateOnly(c.issued_at)}</p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button as={Link} to={`/verify/${c.token}`} size="sm" variant="flat" startContent={<ExternalLink size={14} />}>View</Button>
+                <div className="mt-5 flex gap-2 border-t border-divider pt-4">
+                  <Button as={Link} to={`/verify/${c.token}`} size="sm" variant="flat" color="primary" startContent={<ExternalLink size={14} />}>View</Button>
                   <Button size="sm" variant="flat" startContent={<Copy size={14} />} onPress={() => { void copy(c.token); }}>Copy link</Button>
                 </div>
-              </CardBody></Card>
+              </div>
             ))}
           </div>
         )}

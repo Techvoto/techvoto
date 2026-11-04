@@ -17,10 +17,7 @@ const STATUSES: CourseStatus[] = ['draft', 'published', 'archived'];
 export default function AdminCourses() {
   useTitle('All courses');
   const [page, setPage] = useState(1);
-  const swr = useSWR<Paged<Course>>(
-  `courses/?all=1&page=${page}`,
-  { keepPreviousData: true },
-);
+  const swr = useSWR<Paged<Course>>(`courses/?all=1&page=${page}`, { keepPreviousData: true });
   async function setStatus(c: Course, status: string) {
     try { await api(`courses/${c.slug}/`, { method: 'PATCH', body: { status } }); toast.success('Course updated'); void swr.mutate(); }
     catch (e) { toast.error('Could not update', errorMessage(e)); }

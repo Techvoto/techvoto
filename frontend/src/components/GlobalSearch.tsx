@@ -13,8 +13,8 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 interface RowProps { icon: LucideIcon; title: string; sub?: string; right?: string; onClick: () => void }
 function Row({ icon: Icon, title, sub, right, onClick }: RowProps) {
   return (
-    <li><button onClick={onClick} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-default-100">
-      <Icon size={16} className="shrink-0 text-primary" />
+    <li><button onClick={onClick} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-default-100">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon size={16} /></span>
       <span className="min-w-0 grow"><span className="block truncate text-sm font-medium">{title}</span>{sub && <span className="block truncate text-xs text-default-500">{sub}</span>}</span>
       {right && <span className="shrink-0 text-xs font-semibold text-primary">{right}</span>}
     </button></li>
@@ -35,18 +35,16 @@ export default function GlobalSearch() {
   }, []);
   useEffect(() => { const t = setTimeout(() => setQ(text.trim()), 250); return () => clearTimeout(t); }, [text]);
 
-  const { data, isLoading } = useSWR<SearchResults>(
-  q.length >= 2 ? `search/?q=${encodeURIComponent(q)}` : null,
-  { keepPreviousData: true },
-);
+
+  const { data, isLoading } = useSWR<SearchResults>(q.length >= 2 ? `search/?q=${encodeURIComponent(q)}` : null, { keepPreviousData: true });
   const go = (href: string) => { setOpen(false); setText(''); navigate(href); };
   const empty = data && !data.courses.length && !data.instructors.length && !data.lessons.length;
 
   return (
     <>
       <Button variant="bordered" size="sm" onPress={() => setOpen(true)} aria-label="Search courses, instructors and lessons" startContent={<Search size={15} />}
-        className="hidden w-56 justify-start border-default-300 text-default-500 md:flex"><span className="grow text-left text-sm">Search</span><kbd className="rounded border border-default-300 px-1.5 text-[10px]">Ctrl K</kbd></Button>
-      <Button isIconOnly variant="light" radius="full" aria-label="Search" onPress={() => setOpen(true)} className="md:hidden"><Search size={18} /></Button>
+        className="hidden w-52 justify-start border-default-200 bg-default-50 text-default-500 lg:flex"><span className="grow text-left text-sm">Search</span><kbd className="rounded-md border border-default-200 bg-content1 px-1.5 text-[10px] font-medium">Ctrl K</kbd></Button>
+      <Button isIconOnly variant="light" radius="full" aria-label="Search" onPress={() => setOpen(true)} className="lg:hidden"><Search size={18} /></Button>
       <Modal isOpen={open} onOpenChange={setOpen} placement="top" size="xl" scrollBehavior="inside">
         <ModalContent>
           <ModalBody className="gap-4 py-4">
