@@ -114,15 +114,29 @@ REST_FRAMEWORK = {
     },
 }
 
+
 AUTH_COOKIE_SECURE = env.bool('AUTH_COOKIE_SECURE', default=not DEBUG)
 AUTH_COOKIE_SAMESITE = env('AUTH_COOKIE_SAMESITE', default='Lax')
 AUTH_COOKIE_DOMAIN = env('AUTH_COOKIE_DOMAIN', default='')
-CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
+
+# Fail-safe for production cross-origin cookies
+if not DEBUG:
+    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SECURE = True
+else:
+    CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
+    CSRF_COOKIE_SECURE = AUTH_COOKIE_SECURE
+
 CSRF_COOKIE_DOMAIN = AUTH_COOKIE_DOMAIN or None
+
+
+
 if not DEBUG and not AUTH_COOKIE_SECURE:
     raise ImproperlyConfigured('AUTH_COOKIE_SECURE must be True in production.')
 if AUTH_COOKIE_SAMESITE.lower() == 'none' and not AUTH_COOKIE_SECURE:
     raise ImproperlyConfigured('SameSite=None cookies require AUTH_COOKIE_SECURE=True.')
+
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),

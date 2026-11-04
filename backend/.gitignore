@@ -7,6 +7,9 @@
 *.p8
 **/jitsi_private.key
 secrets/
+data.json
+load.py
+
 
 # Python
 __pycache__/
