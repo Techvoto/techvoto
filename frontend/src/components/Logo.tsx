@@ -1,29 +1,27 @@
-import { useId } from 'react';
 import { Link } from 'react-router-dom';
 
-export function LogoMark({ className = 'h-8 w-8' }: { className?: string }) {
-  const id = useId();
-  return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#6366f1" />
-          <stop offset="1" stopColor="#4338ca" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="8" fill={`url(#${id})`} />
-      <path d="M9 10h14v3.4h-5.2V23h-3.6v-9.6H9z" fill="#ffffff" />
-    </svg>
-  );
-}
+/** Files in /public. Change the extension here if yours are .png. */
+const LOGO_FOR_LIGHT_MODE = '/techvoto-logo-dark.png';   // dark logo, shown on light backgrounds
+const LOGO_FOR_DARK_MODE = '/techvoto-logo-white.png';   // white logo, shown on dark backgrounds
 
 interface LogoProps { href?: string; size?: 'md' | 'lg'; light?: boolean }
 
+/**
+ * Header logo. `light` forces the white version, for use on the dark brand panel
+ * (login and register side panel), which is dark in both themes.
+ */
 export default function Logo({ href = '/', size = 'md', light = false }: LogoProps) {
+  const height = size === 'lg' ? 'h-10' : 'h-8';
   return (
-    <Link to={href} className="flex items-center gap-2.5 font-semibold tracking-tight" aria-label="Techvoto home">
-      <LogoMark className={size === 'lg' ? 'h-10 w-10' : 'h-8 w-8'} />
-      <span className={`${size === 'lg' ? 'text-2xl' : 'text-[1.15rem]'} ${light ? 'text-white' : 'text-foreground'}`}>Techvoto</span>
+    <Link to={href} className="flex items-center" aria-label="Techvoto home">
+      {light ? (
+        <img src={LOGO_FOR_DARK_MODE} alt="Techvoto" className={`${height} w-auto`} />
+      ) : (
+        <>
+          <img src={LOGO_FOR_LIGHT_MODE} alt="Techvoto" className={`${height} w-auto dark:hidden`} />
+          <img src={LOGO_FOR_DARK_MODE} alt="" aria-hidden="true" className={`${height} hidden w-auto dark:block`} />
+        </>
+      )}
     </Link>
   );
 }
