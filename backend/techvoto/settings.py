@@ -115,27 +115,29 @@ REST_FRAMEWORK = {
 }
 
 
+# ==============================================================================
+# COOKIE & CSRF CONFIGURATION (Vercel Frontend <-> Render Backend)
+# ==============================================================================
 AUTH_COOKIE_SECURE = env.bool('AUTH_COOKIE_SECURE', default=not DEBUG)
 AUTH_COOKIE_SAMESITE = env('AUTH_COOKIE_SAMESITE', default='Lax')
 AUTH_COOKIE_DOMAIN = env('AUTH_COOKIE_DOMAIN', default='')
 
-# Fail-safe for production cross-origin cookies
 if not DEBUG:
+    # Production cross-origin requirements
     CSRF_COOKIE_SAMESITE = 'None'
     CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_DOMAIN = None
 else:
+    # Local development
     CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
     CSRF_COOKIE_SECURE = AUTH_COOKIE_SECURE
-
-CSRF_COOKIE_DOMAIN = AUTH_COOKIE_DOMAIN or None
-
-
+    CSRF_COOKIE_DOMAIN = AUTH_COOKIE_DOMAIN or None
 
 if not DEBUG and not AUTH_COOKIE_SECURE:
     raise ImproperlyConfigured('AUTH_COOKIE_SECURE must be True in production.')
 if AUTH_COOKIE_SAMESITE.lower() == 'none' and not AUTH_COOKIE_SECURE:
     raise ImproperlyConfigured('SameSite=None cookies require AUTH_COOKIE_SECURE=True.')
-
+# ==============================================================================
 
 
 SIMPLE_JWT = {
@@ -238,9 +240,6 @@ if not DEBUG:
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
     SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
     SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_SAMESITE = AUTH_COOKIE_SAMESITE
-    CSRF_COOKIE_DOMAIN = AUTH_COOKIE_DOMAIN or None
     CSRF_COOKIE_HTTPONLY = True  # React receives a masked token from /auth/csrf/; the cookie itself need not be readable
     X_FRAME_OPTIONS = 'DENY'
 
