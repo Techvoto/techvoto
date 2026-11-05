@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|icon.svg|robots.txt).*)",
-      "destination": "/index.html"
+      "source": "/api/:path*",
+      "destination": "https://techvoto-2.onrender.com/api/:path*"
     },
     {
       "source": "/((?!api/|assets/|icon.svg|robots.txt).*)",
