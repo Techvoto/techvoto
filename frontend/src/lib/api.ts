@@ -4,9 +4,7 @@ import { createApiClient, ClientApiError } from './api-client.mjs';
 
 /** Empty = same origin (Vite dev proxy or a production /api reverse proxy). */
 export const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
-if (import.meta.env.PROD && !API_BASE) {
-  console.error('[Techvoto] VITE_API_URL is empty. Configure the verified Django API origin; /api requests are not served by the Vercel SPA fallback.');
-}
+
 
 export function errorMessage(err: unknown): string {
   const e = err as { data?: unknown; message?: string } | null | undefined;
@@ -57,3 +55,4 @@ export async function downloadFile(fileLink: string, fallbackName = 'download') 
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(href), 10_000);
 }
+
