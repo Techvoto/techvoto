@@ -4,10 +4,8 @@ import path from 'node:path';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  if (process.env.VERCEL === '1' && !env.VITE_API_URL?.trim()) {
-    throw new Error('VITE_API_URL must be set to the verified HTTPS Django API origin in Vercel project settings.');
-  }
   return {
+  
     plugins: [react()],
     resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
     server: {
